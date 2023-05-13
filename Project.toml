@@ -1,16 +1,14 @@
 name = "Inherit"
 uuid = "341b8389-5eed-42ab-a01e-622c6bedf032"
 authors = ["mind6 <kirbyzhang@live.com> and contributors"]
-version = "0.1-DEV"
+version = "0.1.0-DEV"
+
+[deps]
+MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
 julia = "1.9"
-
-[deps]
-Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
-Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
-MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [extras]
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"

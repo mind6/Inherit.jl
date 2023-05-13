@@ -104,6 +104,15 @@ end
 # 	# @macroexpand @testmacro struct S end
 # 	@testmacro struct S end
 # end
+begin
+	
+	@capture(:(mutable struct Apple <: Fruit nothing end), 
+		(mutable struct T_Symbol <:S_ lines__ end) | (mutable struct T_ lines__ end))
+	# @capture(:(struct Apple <:Fruit end), (struct T_ <: S_ end) | (struct T_ lines__ end))
+	@show T S 
+end
+@capture(:(func(x::Int) = 1), (f_(args__) = body_) | (struct S s end))
+@show f args
 
 @testset "not implemented" begin
 	struct T1 <: AbstractVector{Int} end
@@ -180,9 +189,6 @@ end
 
 # 	function cost(fruit::M1.Fruit, unitprice::Float32)::Float32 end
 # end) |> dump
-
-"markdown __comment__ here"
-f() = 1
 
 "
 Cross module inheritance with name clash resolution
@@ -348,11 +354,23 @@ end
 "
 module M6
 	using Inherit, Test, Main.M1
-	# @abstractbase mutable struct Fruit 
-	# 	weight
-	# end
-	# @implement struct Apple <: Fruit end
-	# @implement mutable struct Apple <: Fruit end
+	@abstractbase mutable struct Fruit 
+		weight
+		const seller
+	end
+	
+	@implement mutable struct Apple <: Fruit end
+
+	@abstractbase struct Berry end
+
+	@testset "mutability tests" begin	
+		@test_throws "mutability" @implement struct Apple <: Fruit end
+		@test_throws "mutability" @implement mutable struct Cherry <: Berry end
+		apple = Apple(1.0, "washington")
+		apple.weight = 2.0
+		@test_throws "const field" apple.seller = "california"
+		@test apple.weight == 2.0
+	end
 end
 
 begin

@@ -1,1 +1,7 @@
-{}
+{
+	"editor.quickSuggestions": {
+		"other": "off"
+	},
+	"editor.parameterHints.enabled": false,
+	"editor.suggestOnTriggerCharacters": false
+}

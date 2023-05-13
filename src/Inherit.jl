@@ -34,11 +34,11 @@ A parametric type signature can be supertype of abstract type signature
 module Inherit
 export @abstractbase, @implement, @interface, @postinit, @test_nothrows, InterfaceError, ImplementError, SettingsError, (<--), setglobalreportlevel, setreportlevel, ThrowError, ShowMessage, DisableInit
 
-using MacroTools, Logging
+using MacroTools
 import Test:@test
 
 #module property name of the dict mapping from abstract base type names to expressions for fields of the base type
-const H_FIELDS::Symbol = :__Inherit_jl_FIELDS
+const H_TYPESPEC::Symbol = :__Inherit_jl_TYPESPEC
 #module property name of the dict mapping type identifier to method interfaces. Unlike DB_FIELDS, this one can contain interfaces defined in a foreign module.
 const H_METHODS::Symbol = :__Inherit_jl_METHODS
 #module property name of the dict mapping type identifier to (nonqualified) subtype names
@@ -50,6 +50,12 @@ const H_IMPORTED::Symbol = :__Inherit_jl_IMPORTED
 TypeIdentifier = @NamedTuple{
 	modulefullname::Tuple, 	#module where the supertype was originally defined
 	basename::Symbol}			#name of the supertype
+
+TypeSpec = @NamedTuple{
+	ismutable::Bool,			#whether or not the fields of this type are mutable
+	fields::Vector{Expr}		#expressions that define the type's fields (including those inherited from supertype)	
+}
+
 MethodDeclaration = @NamedTuple{
 	defmodulename::Tuple, 	#module where the declaration was originally defined. helps with line reduction
 	defbasename::Symbol,		#base type name where the declaration was originally defined. helps with line reduction
@@ -72,10 +78,10 @@ include("utils.jl")
 
 function setup_module_db(mod::Module)
 	### only done once on first use of @abstractbase or @implement in a module
-	if !isdefined(mod, H_FIELDS)
-		setproperty!(mod, H_FIELDS, Dict{
+	if !isdefined(mod, H_TYPESPEC)
+		setproperty!(mod, H_TYPESPEC, Dict{
 			Symbol, 											#abstract base type (local only)
-			Vector{Expr}}())								#list of field definition expressions
+			TypeSpec}())									#flags and fields for this type
 		setproperty!(mod, H_METHODS, Dict{
 			TypeIdentifier, 								#abstract base type (local or foreign)
 			Vector{MethodDeclaration}}())				#list of method declarations required by the base type; this includes local as well as inherited definitions
@@ -102,11 +108,11 @@ function process_supertype(currentmod::Module, S::Union{Symbol, Expr})
 	objS = currentmod.eval(S)		
 	moduleS = objS.name.module
 	nameS = objS.name.name			
-	if !isdefined(moduleS, H_FIELDS)
+	if !isdefined(moduleS, H_TYPESPEC)
 		error("no @abstractbase's have been declared in $moduleS")
 	end	
-	U_DBF = getproperty(moduleS, H_FIELDS)		#either foreign or local DBF
-	if !haskey(U_DBF, nameS)
+	U_DBSPEC = getproperty(moduleS, H_TYPESPEC)		#either foreign or local DBSPEC
+	if !haskey(U_DBSPEC, nameS)
 		error("supertype $nameS not found in $moduleS -- It needs to have been declared with @abstractbase")
 	end
 	identS = TypeIdentifier((fullname(moduleS), nameS))
@@ -133,7 +139,7 @@ function process_supertype(currentmod::Module, S::Union{Symbol, Expr})
 		end
 	end
 	
-	identS, U_DBF, U_DBM
+	identS, U_DBSPEC, U_DBM
 end
 
 "
@@ -144,9 +150,16 @@ macro abstractbase(ex)
 	setup_module_db(__module__)
 
 	ex = longdef(ex)		#normalizes function definition to long form
+	local ismutable
 	T = S = nothing
 	if @capture(ex, struct T_Symbol<:S_ lines__ end)
+		ismutable = false
 	elseif @capture(ex, struct T_Symbol lines__ end)
+		ismutable = false
+	elseif @capture(ex, mutable struct T_Symbol<:S_ lines__ end)
+		ismutable = true
+	elseif @capture(ex, mutable struct T_Symbol lines__ end)
+		ismutable = true
 	else 
 		throw(InterfaceError("Cannot parse the following as a struct type:\n $ex"))
 	end
@@ -159,29 +172,38 @@ macro abstractbase(ex)
 	end
 	MOD = __module__.eval(:(fullname(parentmodule($T))))		
 
-	DBF = getproperty(__module__, H_FIELDS)
+	DBSPEC = getproperty(__module__, H_TYPESPEC)
 	DBM = getproperty(__module__, H_METHODS)
 	DBS = getproperty(__module__, H_SUBTYPES)
 
 	#a type definition completely overwrites previous definitions, method, fields, subtypes are all reset for the type.
-	if T ∈ keys(DBF)
+	if T ∈ keys(DBSPEC)
 		@warn "overwriting previous definition of $T in $__module__"
 	end
 	identT = TypeIdentifier((MOD,T))
 
 	function reset_type()
-		DBF[T] = Vector{Expr}()
+		DBSPEC[T] = TypeSpec((ismutable, Vector{Expr}()))
 		DBM[identT] = Vector{MethodDeclaration}()
 		DBS[identT] = Vector{Symbol}()
 		if S !== nothing		#copy fields and methods from the super type to the subtype 
-			identS, U_DBF, U_DBM = process_supertype(__module__, S)
-
+			identS, U_DBSPEC, U_DBM = process_supertype(__module__, S)
+			specS = U_DBSPEC[identS.basename]	#using S is not reliable here because it may have module path in it
+			specT = DBSPEC[T]
+			if specT.ismutable != specS.ismutable
+				errorstr = "mutability of $S is $(specS.ismutable) but that of $T is $(specT.ismutable)"
+				return :(throw(InterfaceError($errorstr)))
+			end
 			#we bring over fields and method declarations from S and add it to T
-			append!(DBF[T], U_DBF[identS.basename])
+			append!(specT.fields, specS.fields)
 			append!(DBM[identT], U_DBM[identS]) #but the original `line` may still be referring to the original module
 		end
+		nothing
 	end
-	reset_type()
+	ret=reset_type()
+	if ret !== nothing
+		return ret
+	end
 
 	comment = nothing
 	for line in lines
@@ -196,7 +218,11 @@ macro abstractbase(ex)
 
 				# duplicate fields will be detected by the implementing struct. duplicate methods are detected by us.
 				if !all(p->p.sig != m.sig, DBM[identT])
-					reset_type()	#clears everything we've seen so far about the type, so it isn't misused? how necessary is this?
+					ret=reset_type() 	#clears everything we've seen so far about the type, so it isn't misused? how necessary is this?
+					if ret !== nothing
+						return ret
+					end
+									
 					errorstr = "duplicate method definition at $(__source__.file):$(__source__.line)"
 					return :(throw(InterfaceError($errorstr)))
 				end
@@ -206,11 +232,11 @@ macro abstractbase(ex)
 				comment = nothing
 				Base.delete_method(m)   # `WARNING: method deletion during Module precompile may lead to undefined behavior` This warning shows up even when deleting in module __init__.
 
-			elseif isexpr(line, :(::))
-				push!(DBF[T], line)
-			elseif line isa Symbol 		#Any is implied, normalize it to the same expression format as typed field
+			elseif isexpr(line, :(::), :const)
+				push!(DBSPEC[T].fields, line)
+			elseif line isa Symbol 		#Any is implied, convert to expression
 				line = :($line::Any)
-				push!(DBF[T], line)
+				push!(DBSPEC[T].fields, line)
 			else
 				@warn "ignoring unrecognized expression: $line"
 			end
@@ -222,11 +248,10 @@ macro abstractbase(ex)
 		end	#if @capture...
 	end	#for line...
 
-	# to_qualified_expr(MOD..., T)	#evaluates to the abstract type we just created, which allows Base.@__doc__ to work. Note the fully qualified name is needed to evaluate type T, for some reason.
 	if S === nothing
 		:(abstract type $T end)
 	else
-		:(abstract type $T <: $S end)
+		:(abstract type $T <: $S end)		#S here preserves any module path we may need to evaluate it
 	end
 
 end 	#end @abstractbase
@@ -388,7 +413,11 @@ Method declarations may come from a foreign module, in which case, method implem
 macro implement(ex)
 	setup_module_db(__module__)
 
+	local ismutable
 	if @capture(ex, struct T_Symbol<:S_ fields__ end)
+		ismutable = false
+	elseif @capture(ex, mutable struct T_Symbol<:S_ fields__ end)
+		ismutable = true
 	else
 		errorstr = "Cannot parse the following as a struct subtype:\n $ex"
 		return :(throw(ImplementError($errorstr)))
@@ -396,8 +425,12 @@ macro implement(ex)
 	# dump(S; maxdepth=16)
 
 	### evaluate the supertype expression so we can get the correct module
-	identS, U_DBF, U_DBM = process_supertype(__module__, S)
-
+	identS, U_DBSPEC, U_DBM = process_supertype(__module__, S)
+	specS = U_DBSPEC[identS.basename]		#using S is not reliable here because it may have module path in it
+	if ismutable != specS.ismutable
+		errorstr = "mutability of $S is $(specS.ismutable) but that of $T is $ismutable"
+		return :(throw(ImplementError($errorstr)))
+	end
 	# recording as subtype in the local module's dict. this activates any method requirements for the supertype
 	DBS = getproperty(__module__, H_SUBTYPES)
 	DBM = getproperty(__module__, H_METHODS)
@@ -433,7 +466,7 @@ macro implement(ex)
 	# end
 
 	# add the fields for the supertype to the front of list for derived type
-	prepend!(ex.args[3].args, U_DBF[identS.basename])	
+	prepend!(ex.args[3].args, specS.fields)	
 
 	esc(ex)		#hygiene pass will resolve ex to the Inherit module if not escaped
 end	#end @implement
