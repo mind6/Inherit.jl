@@ -32,9 +32,9 @@ A parametric type signature can be supertype of abstract type signature
 
 """
 module Inherit
-export @abstractbase, @implement, @interface, @postinit, @test_nothrows, InterfaceError, ImplementError, SettingsError, (<--), setglobalreportlevel, setreportlevel, ThrowError, ShowMessage, DisableInitCheck
+export @abstractbase, @implement, @interface, @postinit, @test_nothrows, InterfaceError, ImplementError, SettingsError, (<--), setglobalreportlevel, setreportlevel, ThrowError, ShowMessage, DisableInit
 
-using MacroTools
+using MacroTools, Infiltrator
 import Test:@test
 
 #module property name of the dict mapping from abstract base type names to expressions for fields of the base type
@@ -75,13 +75,6 @@ struct SettingsError <: Exception
 	msg::String
 end
 
-function Base.show(io::IO, x::Union{InterfaceError, ImplementError, SettingsError})
-	print(io, nameof(typeof(x)), ": ")
-	print(io, x.msg)
-end
-
-const DB_MODULES = Dict{Tuple, Module}()	#points from fullname(mod) to the mod
-
 include("reportlevel.jl")
 include("utils.jl")
 
@@ -99,14 +92,17 @@ function setup_module_db(mod::Module)
 			Vector{Symbol}}())							#local subtype name
 		setproperty!(mod, H_IMPORTED, Set{
 			TypeIdentifier}())							#(modulefullname,funcname) pairs that have been auto imported into the current module
+		
 
-		### setup the module init to check for implementations after module is fully loaded
-		initexp = create_module__init__()
-		# dump(initexp; maxdepth=16)
-		# println(initexp)
-		mod.eval(initexp)		#NOTE: do not do rmlines or this eval can have problems
 		me = getmoduleentry(mod)
-		me.init_created = true
+		if me.rl != DisableInit
+			### setup the module init to check for implementations after module is fully loaded
+			initexp = create_module__init__()
+			# dump(initexp; maxdepth=16)
+			# println(initexp)
+			mod.eval(initexp)		#NOTE: do not do rmlines or this eval can have problems
+			me.init_created = true
+		end
 	end
 end
 
@@ -169,16 +165,14 @@ macro abstractbase(ex)
 	else 
 		throw(InterfaceError("Cannot parse the following as a struct type:\n $ex"))
 	end
-	if S === nothing
-		ret_expr = :(abstract type $T end)
-	else
-		ret_expr = :(abstract type $T <: $S end)
-	end
-
+	# @show T, S
 	#eval right away so the type will be available in function definitions
-	__module__.eval(ret_expr)		
-	# MOD = __module__.eval(:(fullname(parentmodule($T))))		
-	MOD = fullname(__module__)
+	if S === nothing
+		__module__.eval(:(abstract type $T end))
+	else
+		__module__.eval(:(abstract type $T <: $S end))
+	end
+	MOD = __module__.eval(:(fullname(parentmodule($T))))		
 
 	DBSPEC = getproperty(__module__, H_TYPESPEC)
 	DBM = getproperty(__module__, H_METHODS)
@@ -256,7 +250,12 @@ macro abstractbase(ex)
 		end	#if @capture...
 	end	#for line...
 
-	esc(ret_expr)	#hygiene pass will resolve ex to the Inherit module if not escaped
+	if S === nothing
+		:(abstract type $T end)
+	else
+		:(abstract type $T <: $S end)		#S here preserves any module path we may need to evaluate it
+	end
+
 end 	#end @abstractbase
 
 function create_module__init__()::Expr
@@ -292,13 +291,7 @@ function create_module__init__()::Expr
 	quote function __init__()
 		if Inherit.isprecompiling() return end		#Can't use eval when precompiling, which "closes" a package. If Pkg2 loads precompiled Pkg1, Pkg1.__init__() will fire, which fails when trying to eval into closed Pkg1.
 
-		Inherit.DB_MODULES[fullname(@__MODULE__)] = @__MODULE__	#we couldn't store this in macro processing stage. Only runtime module objects can be stored.
-
 		modentry = Inherit.getmoduleentry(@__MODULE__)
-		if modentry.rl == DisableInitCheck 
-			@goto process_postinit 
-		end
-
 		n_supertypes = n_subtypes = n_signatures = n_errors = 0
 
 		function handle_error(errorstr::String)
@@ -336,8 +329,7 @@ function create_module__init__()::Expr
 				for decl in decls							# required sigs
 					### get method table for function defined in the current, implementing module (not the declaration module)
 					funcname = Inherit.getfuncname(decl)
-					# __defmodule__ = Inherit.getmodule(@__MODULE__, decl.defmodulename)
-					__defmodule__ = Inherit.DB_MODULES[decl.defmodulename]
+					__defmodule__ = Inherit.getmodule(@__MODULE__, decl.defmodulename)
 					func = nothing
 					mt = nothing
 					if isdefined(__defmodule__, funcname)
@@ -408,8 +400,7 @@ function create_module__init__()::Expr
 		else
 			@debug "I don't require any definitions"
 		end		
-
-	@label process_postinit
+		# do postinit
 		for f in modentry.postinit
 			f()
 		end
@@ -422,8 +413,8 @@ Executed after Inherit.jl verfies interfaces. You may have any number of @postin
 macro postinit(ex)
 	@assert MacroTools.isdef(ex) "function definition expected"
 	modentry = Inherit.getmoduleentry(__module__)
-	if modentry.rl == DisableInitCheck
-		return :(throw(SettingsError("module is set to DisableInitCheck. @postinit requires ThrowError or ShowMessage setting.")))
+	if modentry.rl == DisableInit
+		return :(throw(SettingsError("module is set to DisableInit. @postinit requires ThrowError or ShowMessage setting.")))
 	else
 		push!(modentry.postinit, __module__.eval(ex))
 	end

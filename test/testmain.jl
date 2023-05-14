@@ -5,7 +5,7 @@ Dispatch tests ensure the reduced signature evaluation step is not overwriting m
 "
 module M1
 	using Inherit, Test
-	export Fruit 
+		export Fruit 
 
 	"base types can be documented"
 	@abstractbase struct NoSubTypesOK impliedAnyOK end
@@ -72,7 +72,7 @@ Cross module inheritance with name clash resolution
 "
 module M2
 	using Inherit, Test
-	import Main.M1
+	import ..M1
 
 	@testset "definition errors" begin
 		@test_throws "duplicate method definition" @abstractbase struct Fruit
@@ -92,7 +92,7 @@ module M2
 	function cost(item::Orange, unitprice::Number)
 		item.weight2 * unitprice
 	end
-	function Main.M1.cost(item::Orange1, unitprice::Number)
+	function M1.cost(item::Orange1, unitprice::Number)
 		item.weight * unitprice
 	end
 	@testset "implement @abstractbase from another module" begin
@@ -101,7 +101,7 @@ module M2
 
 		Inherit.setreportlevel(@__MODULE__, ThrowError)
 		@test_nothrows M2.__init__()
-		@test_throws SettingsError Inherit.setreportlevel(@__MODULE__, DisableInit)
+		@test_throws SettingsError Inherit.setreportlevel(@__MODULE__, DisableInitCheck)
 	end
 	# Inherit.setreportlevel(@__MODULE__, ShowMessage)
 end
@@ -110,7 +110,7 @@ end
 @implement only, no use of @abstractbase
 "
 module M3
-	using Inherit, Test, Main.M1
+	using Inherit, Test, ..M1
 	export Apple, Fruit, cost
 
 	@implement struct Apple <: Fruit end
@@ -129,14 +129,14 @@ module M3
 
 	@testset "implement only; auto imported function" begin
 		Inherit.setreportlevel(@__MODULE__, ThrowError)
-		@test parentmodule(cost) == Main.M1
+		@test parentmodule(cost) == M1
 		@test_nothrows __init__()
 	end
 
 end
 
 module M3client
-	using Main.M3, Test
+	using ..M3, Test
 	@testset "client syntax test" begin
 		item = Apple(1.5)
 		@test item isa Fruit
@@ -148,11 +148,11 @@ end
 multilevel inheritance
 "
 module M4
-	using Inherit, Test, Main.M1
+	using Inherit, Test, ..M1
 	export Berry
-	Inherit.setreportlevel(@__MODULE__, DisableInit)
+	Inherit.setreportlevel(@__MODULE__, DisableInitCheck)
 
-	@abstractbase struct Berry <: Main.M1.Fruit
+	@abstractbase struct Berry <: M1.Fruit
 		cluster::Int
 		function bunchcost(b::Berry)::Float32 end
 	end
@@ -172,8 +172,8 @@ module M4
 	end
 
 	@testset "multilevel inheritance" begin
-		@test methods(cost)[1].module == Main.M1
-		@test methods(bunchcost)[1].module == Main.M4
+		@test methods(cost)[1].module == M1
+		@test methods(bunchcost)[1].module == M4
 		@test cost(BlueBerry(1.0, 3), 1.0) == 5.5
 		# Inherit.setreportlevel(@__MODULE__, ThrowError)
 		# @test_nothrows __init__()
@@ -182,8 +182,8 @@ module M4
 end
 
 module M4fail
-	using Inherit, Test, Main.M1
-	@abstractbase struct Berry <: Main.M1.Fruit
+	using Inherit, Test, ..M1
+	@abstractbase struct Berry <: M1.Fruit
 		cluster::Int
 		function bunchcost(b::Berry, unitprice::Float32)::Float32 end
 	end
@@ -203,7 +203,7 @@ end
 multilevel inheritance from a 3rd module
 "
 module M4client
-	using Inherit, Test, Main.M4
+	using Inherit, Test, ..M4
 	@implement struct BlueBerry <: Berry end
 	function bunchcost(item::BlueBerry) 1.0 end
 
@@ -215,7 +215,7 @@ module M4client
 end
 
 module M4clientfail
-	using Inherit, Test, Main.M4
+	using Inherit, Test, ..M4
 	@implement struct BlueBerry <: M4.Berry end
 
 	@testset "3 levels and 3 modules not satisfied" begin
@@ -230,7 +230,7 @@ end
 - put implementation in abstract base to allow extensibility
 "
 module M6
-	using Inherit, Test, Main.M1
+	using Inherit, Test, ..M1
 	@abstractbase mutable struct Fruit 
 		weight
 		const seller

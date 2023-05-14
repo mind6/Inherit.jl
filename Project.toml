@@ -4,6 +4,7 @@ authors = ["mind6 <kirbyzhang@live.com> and contributors"]
 version = "0.1.0-DEV"
 
 [deps]
+Infiltrator = "5903a43b-9cc3-4c30-8d17-598619ec4e9b"
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 

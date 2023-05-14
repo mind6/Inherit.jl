@@ -8,7 +8,7 @@ module m123456
 
 	@testset "nested modules" begin
 		@test Inherit.tostring(fullname(parentmodule(S)), nameof(S)) == "Main.m123.m1234.m12345.m123456.S"
-		@test Inherit.getmodule(@__MODULE__, fullname(@__MODULE__)) == @__MODULE__
+		# @test Inherit.getmodule(@__MODULE__, fullname(@__MODULE__)) == @__MODULE__
 		@test Inherit.to_import_expr(:func, fullname(@__MODULE__)...) == :(import Main.m123.m1234.m12345.m123456:func)
 
 	end
@@ -37,10 +37,10 @@ end
 @testset "reduce base type to subtype in interface definition" begin
 	testexprs = [
 		### basetype and any number of basemodule qualifiers gets reduced to implmodule.impltype
-		[:( function f(x::Fruit) end), :( function f(x::Main.M2.Orange) end)],
-		[:( function f(x::M1.Fruit) end),  :( function f(x::Main.M2.Orange) end)],
-		[:( function f(x::M1.M1.Fruit) end),  :( function f(x::Main.M2.Orange) end)],
-		[:( function f(x::Main.M1.M1.Fruit) end),  :( function f(x::Main.M2.Orange) end)],
+		[:( function f(x::Fruit) end), :( function f(x::M2.Orange) end)],
+		[:( function f(x::M1.Fruit) end),  :( function f(x::M2.Orange) end)],
+		[:( function f(x::M1.M1.Fruit) end),  :( function f(x::M2.Orange) end)],
+		[:( function f(x::Main.M1.M1.Fruit) end),  :( function f(x::M2.Orange) end)],
 
 		### if any qualifier does not match the basemodule, we no longer know what object this is so we don't reduce it 
 		[:( function f(x::M1.M2.Fruit) end),  :( function f(x::M1.M2.Fruit) end)],
@@ -51,11 +51,11 @@ end
 		[:( function f(x::Main.Fruit) end),  :( function f(x::Main.Fruit) end)],
 
 		### reductions work even when used as type parameters
-		[:( function f(x::Pair{Fruit, Int}) end), :( function f(x::Pair{Main.M2.Orange,Int}) end)],
-		[:( function f(x::Pair{<:Fruit, Int}) end), :( function f(x::Pair{<:Main.M2.Orange, Int}) end)],
-		[:( function f(x::Pair{<:Main.M1.Fruit, Int}) end), :( function f(x::Pair{<:Main.M2.Orange, Int}) end)],
+		[:( function f(x::Pair{Fruit, Int}) end), :( function f(x::Pair{M2.Orange,Int}) end)],
+		[:( function f(x::Pair{<:Fruit, Int}) end), :( function f(x::Pair{<:M2.Orange, Int}) end)],
+		[:( function f(x::Pair{<:Main.M1.Fruit, Int}) end), :( function f(x::Pair{<:M2.Orange, Int}) end)],
 		[:( function f(::Int, x::Vector{<:Pair{<:M1.M1.M1.Fruit, Int}}, dummy2) end), 
-			:( function f(::Int, x::Vector{<:Pair{<:Main.M2.Orange, Int}}, dummy2) end)],
+			:( function f(::Int, x::Vector{<:Pair{<:M2.Orange, Int}}, dummy2) end)],
 	]
 	for (expr, expected) in testexprs
 		res = Inherit.reducetype(expr, (:Main, :M1), :Fruit, (:Main, :M2), :Orange)

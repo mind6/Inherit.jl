@@ -77,28 +77,24 @@ function getfuncname(decl::MethodDeclaration)::Symbol
 	nameof(decl.sig.parameters[1].instance)
 end
 
-# "
-# get the module given its fullname and the module handle we currently have
-# "
-# function getmodule(curmod::Module, modulefullname::NTuple{N, Symbol})::Module where N
-# 	### sometime curmod may have been created without the properties we need to follow the fullname path. However we can still find the module pointed to be modulefullname, by skipping over common prefixes.
-# 	curmodfn = fullname(curmod)
-# 	modulefullname = strip_prefix(modulefullname, curmodfn)
-	
-# 	for name in modulefullname
-# 		# @assert hasproperty(curmod, name) 	#cannot use this due to bug in hasproperty FIXME: report this
-# 		try
-# 			curmod = getproperty(curmod, name)
-# 		catch e
-# 			if e isa UndefVarError
-# 				error("""cannot reach $modulefullname from $curmodfn""")
-# 			else
-# 				throw(e)
-# 			end
-# 		end
-# 	end
-# 	curmod
-# end
+function getmodule(curmod::Module, modulefullname::NTuple{N, Symbol})::Module where N
+	@show modulefullname 
+	@assert N == length(modulefullname)
+	for i in 1:length(modulefullname)
+		println(i, ' ', modulefullname[i])
+	end
+	for name in modulefullname
+		@show name
+		# @infiltrate
+		if name == :Main && !hasproperty(curmod, name) 
+			@info "skipping $name"
+			continue 
+		end
+		@assert hasproperty(curmod, name) """$name $(name==:Main) $(strip(string(name))=="Main")"""
+		curmod = getproperty(curmod, name)
+	end
+	curmod
+end
 
 "
 Creates a new module that contains (i.e. imports) only the properties of `basemodule` which are Types and Modules (i.e. excluding any functions). You can evaluate method declarations in this module to get the signature, without modifying `basemodule` itself
@@ -128,22 +124,7 @@ function createshadowmodule(basemodule::Module)
 	newmod
 end
 
-"
-Returns modulefullname without any prefix it may share with prefixfullname. May return an empty tuple.
-"
-function strip_prefix(modulefullname::NTuple{N, Symbol}, prefixfullname::NTuple{M, Symbol}) where {N, M}
-	i = 1
-	while i <= N && i <= M && modulefullname[i] == prefixfullname[i]
-		i += 1
-	end
-	modulefullname[i:end]
-end
-
-"
-This assumes the result will be evaluated inside basemodule. Prefixes are stripped from implmodule to handle situations when a module cannot follow a path that leads to itself.
-"
 function reducetype(expr::Expr, basemodule::NTuple{N, Symbol}, basetype::Symbol, implmodule::NTuple{M, Symbol}, impltype::Symbol)::Expr where {N, M}
-	implmodule = strip_prefix(implmodule, basemodule)
 	MacroTools.postwalk(x->begin
 		if (@capture(x, T_Symbol) && T == basetype) 	#captures the unqualified basetype by itself and reduces it
 			# :($(implmodule).$(impltype))
