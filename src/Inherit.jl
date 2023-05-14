@@ -46,6 +46,8 @@ const H_SUBTYPES::Symbol = :__Inherit_jl_SUBTYPES
 #function names we auto imported, so we don't repeat warning messages
 const H_IMPORTED::Symbol = :__Inherit_jl_IMPORTED
 
+const E_SUMMARY_LEVEL = "INHERIT_JL_SUMMARY_LEVEL"
+
 #super type identifier
 TypeIdentifier = @NamedTuple{
 	modulefullname::Tuple, 	#module where the supertype was originally defined
@@ -270,10 +272,18 @@ function create_module__init__()::Expr
 	# if (!init_throwsexception)
 	# 	@warn "any exceptions will show as error messages only, to allow tests to complete" init_throwsexception
 	# end
+	summarycall = QuoteNode(Symbol("@info"))
+	if haskey(ENV, E_SUMMARY_LEVEL)
+		level = lowercase(strip(ENV[E_SUMMARY_LEVEL]))
+		if level in ["debug", "info", "warn", "error"]
+			summarycall = QuoteNode(Symbol("@"*level))
+		else 
+			summarycall = nothing
+		end
+	end
 	
 	qnodeM = QuoteNode(H_METHODS)
 	qnodeS = QuoteNode(H_SUBTYPES)
-
 	"
 	In the user module's init, we need to throw exceptions directly, since there's no eval on the return value.
 	NOTE that only the quoted expression has access to the correct @__MODULE__. Any utility functions of Inherit.jl must receive this as a parameter, instead of invoking @__MODULE__ directly.
@@ -383,7 +393,10 @@ function create_module__init__()::Expr
 				end
 				@label all_types_satisfy_sig
 			end
-			@info """Inherit.jl: processed $(join(LOCALMOD, '.')) with $(Inherit.singular_or_plural(n_supertypes, "supertype")) having $(Inherit.singular_or_plural(n_signatures, "method requirement")). $(Inherit.singular_or_plural(n_subtypes, "subtype was", "subtypes were")) checked with $(Inherit.singular_or_plural(n_errors, "missing method"))."""
+			if $summarycall != nothing
+				summarystr = """Inherit.jl: processed $(join(LOCALMOD, '.')) with $(Inherit.singular_or_plural(n_supertypes, "supertype")) having $(Inherit.singular_or_plural(n_signatures, "method requirement")). $(Inherit.singular_or_plural(n_subtypes, "subtype was", "subtypes were")) checked with $(Inherit.singular_or_plural(n_errors, "missing method"))."""
+				(@__MODULE__).eval(Expr(:macrocall, $summarycall, LineNumberNode(@__LINE__, @__FILE__), summarystr))
+			end
 		else
 			@debug "I don't require any definitions"
 		end		
