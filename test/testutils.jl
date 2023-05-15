@@ -7,15 +7,33 @@ module m123456
 	struct S end
 
 	@testset "nested modules" begin
-		@test Inherit.tostring(fullname(parentmodule(S)), nameof(S)) == "Main.m123.m1234.m12345.m123456.S"
+		@test Inherit.tostring(Inherit.strip_self_reference(fullname(parentmodule(S))), nameof(S)) == "Main.m123.m1234.m12345.m123456.S"
 		# @test Inherit.getmodule(@__MODULE__, fullname(@__MODULE__)) == @__MODULE__
-		@test Inherit.to_import_expr(:func, fullname(@__MODULE__)...) == :(import Main.m123.m1234.m12345.m123456:func)
-
 	end
 end
 end
 	Main.m123.m1234.m12345.m123456.S
 end
+
+module m1235
+	module m12356
+	end
+
+	using Inherit, Test
+	import ..m1234, .m12356, ..m1234.m12345.m123456
+	import Main.m123, ....m123.m1234.m12345
+
+	@testset "import expressions" begin
+		@test_warn "WARNING: import of " eval(Inherit.to_import_expr(:include, fullname(m1234), fullname(@__MODULE__)))
+		@test_warn "WARNING: import of " eval(Inherit.to_import_expr(:include, fullname(m12356), fullname(@__MODULE__)))
+		@test_warn "WARNING: import of " eval( Inherit.to_import_expr(:include, fullname(m123456), fullname(@__MODULE__)))
+
+		@test_warn "WARNING: import of " eval( Inherit.to_import_expr(:include, fullname(m123), fullname(@__MODULE__)))
+		@test_warn "WARNING: import of " eval( Inherit.to_import_expr(:include, fullname(m12345), fullname(@__MODULE__)))
+		@test Inherit.to_import_expr(:cost, (:Main,:Main,:M1), (:Main,:Main,:M2)) == :(import ..M1: cost)
+	end
+end
+
 end
 
 @testset "utils tests" begin
@@ -29,9 +47,8 @@ end
 
 	sig = methods(findmax)[1].sig
 	@test Inherit.make_variable_tupletype(@__MODULE__, sig.types...) == sig
-	@test Inherit.to_import_expr(:func, :Main) == :(import Main:func)
-	@test Inherit.to_import_expr(:func, :Main, :M1) == :(import Main.M1:func)
 	@test MacroTools.splitdef(Inherit.privatize_funcname(:( function f(x::Main.M1.M1.Fruit) end)))[:name] == :__f
+
 end
 
 @testset "reduce base type to subtype in interface definition" begin

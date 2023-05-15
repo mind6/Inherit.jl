@@ -72,7 +72,7 @@ Cross module inheritance with name clash resolution
 "
 module M2
 	using Inherit, Test
-	import ..M1
+	import Main.M1
 
 	@testset "definition errors" begin
 		@test_throws "duplicate method definition" @abstractbase struct Fruit
@@ -88,7 +88,7 @@ module M2
 	end
 
 	@implement struct Orange <: Fruit end
-	@implement struct Orange1 <: M1.Fruit end
+	@implement struct Orange1 <: Main.M1.Fruit end
 	function cost(item::Orange, unitprice::Number)
 		item.weight2 * unitprice
 	end
@@ -200,6 +200,27 @@ module M4fail
 end
 
 "
+Tests that satisfying all subtypes doesn't incorrectly skip a later declaration
+"
+module M4fail2
+	using Inherit, Test, ..M1
+	@abstractbase struct Berry <: M1.Fruit
+		cluster::Int
+		function punchcost(b::Berry, unitprice::Float32)::Float32 end
+	end
+	cost(item::Fruit, ::Float32) = 1.0
+	
+	@implement struct BlueBerry <: Berry end
+
+	@testset "multilevel inheritance" begin
+		Inherit.setreportlevel(@__MODULE__, ThrowError)
+		@test_throws ImplementError __init__()
+	end
+
+	Inherit.setreportlevel(@__MODULE__, ShowMessage)
+end
+
+"
 multilevel inheritance from a 3rd module
 "
 module M4client
@@ -248,4 +269,34 @@ module M6
 		@test_throws "const field" apple.seller = "california"
 		@test apple.weight == 2.0
 	end
+end
+
+module doctest1
+module M1
+	using Inherit
+
+	@abstractbase struct Fruit
+		weight::Float64
+		function cost(fruit::Fruit, unitprice::Float64) end
+	end
+	function cost(item::Fruit, unitprice::Number)
+		unitprice * item.weight
+	end		
+	@show fullname(@__MODULE__)
+end
+
+module M2
+	using Inherit
+	import ..M1
+
+	@abstractbase struct Berry <: M1.Fruit
+		function pack(time::Int, bunch::Dict{String, AbstractVector{<:Berry}})::Float32 end
+	end
+
+	@implement struct BlueBerry <: Berry end
+	function pack(time::Number, bunch::Dict{String, AbstractVector{<:BlueBerry}})::Float32 end
+	for name in fullname(@__MODULE__)
+		println(name)
+	end
+end
 end

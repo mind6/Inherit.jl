@@ -135,7 +135,7 @@ function process_supertype(currentmod::Module, S::Union{Symbol, Expr})
 		identF = TypeIdentifier((decl.defmodulename, funcname))
 
 		if !isdefined(currentmod, funcname)
-			expr = to_import_expr(funcname, decl.defmodulename...)
+			expr = to_import_expr(funcname, decl.defmodulename, currentfullname)
 			# currentmod.eval(:(export $funcname))	#NOTE: export must come before the symbol import, in order to work. I think we may not actually want this. Allow export lists to be explicit.
 			currentmod.eval(expr)
 			push!(DBI, identF)
@@ -329,7 +329,7 @@ function create_module__init__()::Expr
 
 				if isempty(SUBTYPES)	
 					@debug "$(Inherit.tostring(identS)) has no subtypes; not requiring method implementations"
-					@goto all_types_satisfy_sig 
+					continue 
 				end
 
 				@debug "Inherit.jl requires interface definitions defined in base type $(Inherit.tostring(identS)) to be satisfied"
@@ -387,7 +387,7 @@ function create_module__init__()::Expr
 							if decl.sig <: m.sig	# being a supersig in the unmodified version satisfies all subtypes. 
 								type_satisfied = true
 								@debug "all subtypes have been satisfied by $(m.sig)"
-								@goto all_types_satisfy_sig
+								# @goto all_types_satisfy_sig
 							elseif reducedsig <: m.sig
 								@debug "subtype $(Inherit.tostring(LOCALMOD, subtype)) satisfied by $(m.sig)"
 								type_satisfied = true
@@ -398,9 +398,13 @@ function create_module__init__()::Expr
 							handle_error(errorstr)
 						end
 					end	#end subtypes
-				end
-				@label all_types_satisfy_sig
-			end
+
+					# @info "all checked"
+					# @label all_types_satisfy_sig
+					# @info "$decl done"
+					#FIXME: report "Unreachable reached at" error with label here
+				end #end decls
+			end #end DMB
 			if $summarycall != nothing
 				summarystr = """Inherit.jl: processed $(join(LOCALMOD, '.')) with $(Inherit.singular_or_plural(n_supertypes, "supertype")) having $(Inherit.singular_or_plural(n_signatures, "method requirement")). $(Inherit.singular_or_plural(n_subtypes, "subtype was", "subtypes were")) checked with $(Inherit.singular_or_plural(n_errors, "missing method"))."""
 				(@__MODULE__).eval(Expr(:macrocall, $summarycall, LineNumberNode(@__LINE__, @__FILE__), summarystr))

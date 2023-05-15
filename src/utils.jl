@@ -30,11 +30,46 @@ end
 Makes a valid `import` expression like `import modpath1.modpath2.modpath3: item`
 
 `:(import \$modpath : \$item)` won't work even when `modpath` evaluates to `modpath1.modpath2.modpath3`
+
+evalmodname: the module where the import statement will be evaluated. It helps to convert Main to .. in some situations
 "
-function to_import_expr(item::Symbol, modpath::Symbol...)::Expr
+function to_import_expr(item::Symbol, modname::NTuple{N, Symbol}, evalmodname::NTuple{M, Symbol})::Expr where {N, M}
+	modname = strip_self_reference(modname)
+	evalmodname = strip_self_reference(evalmodname)
+	# @show modname evalmodname
+	symbols = Vector{Symbol}()
+
+	i = skip_prefix(modname, evalmodname)
+	if i == 1	#no relationship, use absolute path
+		append!(symbols, modname)
+	elseif i > length(evalmodname)	#mod is a submodule of evalmod
+		@assert i <= length(modname) "unexpected import from same module $(modname) by $(evalmodname)"
+		push!(symbols, :.)
+		append!(symbols, modname[i:end])
+	else	#mod can be reached from an ancestor of evalmod
+		@assert i <= length(evalmodname) "unexpected import from same module $(modname) by $(evalmodname)"
+		iancestor = i - 1
+		backlevels = length(evalmodname) - iancestor
+
+		if i > length(modname) 	### importing an ancestor itself, extra .. plus ancestor name
+			for k in 1:(backlevels+1)
+				push!(symbols, :., :.)
+			end
+			push!(symbols, modname[iancestor])	
+		else	 ### importing a descendant of an ancestor, no extra .. no ancestor name
+			for k in 1:(backlevels)
+				push!(symbols, :., :.)
+			end
+		end
+
+		for k in iancestor+1:length(modname)
+			push!(symbols, modname[k])
+		end
+	end
+
 	Expr(:import, 
 		Expr(:(:), 
-			Expr(:., modpath...), 
+			Expr(:., symbols...), 
 			Expr(:., item)))
 end
 
@@ -132,11 +167,29 @@ end
 Returns modulefullname without any prefix it may share with prefixfullname. May return an empty tuple.
 "
 function strip_prefix(modulefullname::NTuple{N, Symbol}, prefixfullname::NTuple{M, Symbol}) where {N, M}
+	modulefullname[skip_prefix(modulefullname, prefixfullname):end]
+end
+
+"return the index of the first position in modulefullname and prefixfullname does not match"
+function skip_prefix(modulefullname::NTuple{N, Symbol}, prefixfullname::NTuple{M, Symbol}) where {N, M}
 	i = 1
 	while i <= N && i <= M && modulefullname[i] == prefixfullname[i]
 		i += 1
 	end
-	modulefullname[i:end]
+	i
+end
+"
+removes repetition of module names
+"
+function strip_self_reference(modulefullname::NTuple{N, Symbol}) where N
+	types = Vector{Symbol}()
+	push!(types, modulefullname[1])
+	for i in 2:N
+		if modulefullname[i] != modulefullname[i-1]
+			push!(types, modulefullname[i])
+		end
+	end
+	Tuple(types)
 end
 
 "

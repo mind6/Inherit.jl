@@ -9,7 +9,6 @@ DocTestSetup = quote
 	import Inherit
 	ENV["JULIA_DEBUG"] = ""
 	ENV[Inherit.E_SUMMARY_LEVEL] = "info"
-	@show ENV["JULIA_DEBUG"] 
 end
 ```
 
@@ -17,7 +16,7 @@ end
 
 Use `@abstractbase` to declare an abstract supertype, and use `@implement` to inherit from such a type. Standard `struct` syntax is used.
 
-```jldoctest mylabel
+```jldoctest
 using Inherit
 
 "abstract base type of Fruity objects"
@@ -58,7 +57,7 @@ Object oriented programming is most helpful when applications have grown across 
 
 The specially named function `__init__()` is called after the module has been fully loaded by Julia. If an interface definition has not been met, an exception will be thrown.
 
-```jldoctest mylabel
+```jldoctest
 module M1
 	using Inherit
 	@abstractbase struct Fruit
@@ -76,7 +75,46 @@ ERROR: InitError: ImplementError: subtype M1.Orange missing Tuple{typeof(M1.cost
 function cost(fruit::Fruit, unitprice::Float64)
 [...]
 ```
+Upon loading module `M1`, Inherit.jl throws an `ImplementError` from the `__init__()` function, telling you that it's looking for a method signature that can dispatch `cost(::M1.Orange, ::Float64)`. It makes no complaints about `Apple` and `Kiwi` because their dispatch can be satisfied
+
 ## The `@postinit` macro
+
+The presence of an `@abstractbase` or `@implement` causes Inherit.jl to generate and __overwrite__ the module's `__init__()` function. To execute your own module initiation code, the `@postinit` macro is available. 
+
+Let's demonstrate this in a more extended example.
+
+```jldoctest
+module M1
+	using Inherit
+
+	@abstractbase struct Fruit
+		weight::Float64
+		function cost(fruit::Fruit, unitprice::Float64) end
+	end
+	function cost(item::Fruit, unitprice::Number)
+		unitprice * item.weight
+	end		
+end
+
+module M2
+	using Inherit
+	import ..M1
+
+	@abstractbase struct Berry <: M1.Fruit
+		function pack(time::Int, bunch::Dict{String, AbstractVector{<:Berry}})::Float32 end
+	end
+
+	@implement struct BlueBerry <: Berry end
+	function pack(time::Number, bunch::Dict{String, AbstractVector{<:BlueBerry}})::Float32 end
+
+end
+nothing
+
+# output
+[ Info: Inherit.jl: processed M1 with 1 supertype having 1 method requirement. 0 subtypes were checked with 0 missing methods.
+[ Info: Inherit.jl: processed M2 with 1 supertype having 2 method requirements. 1 subtype was checked with 0 missing methods.
+```
+
 ## Changing the reporting level
  
 By default, module `__init__()` writes a summary message at the `Info` log level. You can change this by setting `ENV["INHERIT_JL_SUMMARY_LEVEL"]` to one of `["debug", "info", "warn", "error", "none"]`.
@@ -84,36 +122,8 @@ By default, module `__init__()` writes a summary message at the `Info` log level
 # Limitations
 ## Multiple inheritance
 
-## Syntax quirks
-Use relative module reference such as 
-
-```julia
-module OtherModule
-end
-
-module MyModule
-	using ..OtherModule
-end
-```
-
-rather than 
-
-```julia
-module MyModule
-	using Main.OtherModule
-end
-``` 
-.
-
-`Inherit.jl` will not look for `Main` to try to find `OtherModule`, because parent module `Main` isn't available to `MyModule` in some situations. 
-
-
-# ```@contents
-# ```
-
-# ```@index
-# ```
-
-# ```@autodocs
-# Modules = [Inherit]
-# ```
+# API
+| environment variable | value | description|
+|---|---|---|
+|JULIA_DEBUG | "Inherit" | Enables printing of more detailed `Debug` level messsages. Default is "" which only prints `Info` level messages |
+|INHERIT_JL_SUMMARY_LEVEL| "debug", "info", "warn", "error", or "none"| logs the per-module summary message at the chosen level, or none at all. Default is "info". |
