@@ -19,7 +19,11 @@ Use `@abstractbase` to declare an abstract supertype, and use `@implement` to in
 ```jldoctest
 using Inherit
 
-"abstract base type of Fruity objects"
+"
+Base type of Fruity objects. 
+Creates a julia native type with 
+	`abstract type Fruit end`
+"
 @abstractbase struct Fruit
 	weight::Float64
 	"declares an interface which must be implemented"
@@ -27,14 +31,17 @@ using Inherit
 end
 
 "
-concrete type which represents an apple, inheriting from Fruit
-it has two fields: `weight` and `cost`
+Concrete type which represents an apple, inheriting from Fruit.
+Creates a julia native type with 
+	`struct Apple <: Fruit weight::Float64; coresize::Int end`
 "
 @implement struct Apple <: Fruit 
 	coresize::Int
 end
 
-"implements supertype's interface declaration `cost` for the type `Apple`"
+"
+Implements supertype's interface declaration `cost` for the type `Apple`
+"
 function cost(apple::Apple, unitprice::Float64)
 	apple.weight * unitprice * (apple.coresize < 5 ? 2.0 : 1.0)
 end
@@ -79,9 +86,11 @@ Upon loading module `M1`, Inherit.jl throws an `ImplementError` from the `__init
 
 ## The `@postinit` macro
 
-The presence of an `@abstractbase` or `@implement` causes Inherit.jl to generate and __overwrite__ the module's `__init__()` function. To execute your own module initiation code, the `@postinit` macro is available. 
+The presence of an `@abstractbase` or `@implement` causes Inherit.jl to generate and __overwrite__ the module's `__init__()` function. To execute your own module initiation code, the `@postinit` macro is available. It accepts a function as argument and registers that function to be executed after `__init__()`. Multiple occurrences of `@postinit` will result in each function being called successively.
 
-Let's demonstrate this in a more extended example.
+# Putting it all together
+
+Let's demonstrate `@postinit` as well as other features in a more extended example.
 
 ```jldoctest
 module M1
@@ -125,5 +134,14 @@ By default, module `__init__()` writes a summary message at the `Info` log level
 # API
 | environment variable | value | description|
 |---|---|---|
-|JULIA_DEBUG | "Inherit" | Enables printing of more detailed `Debug` level messsages. Default is "" which only prints `Info` level messages |
-|INHERIT_JL_SUMMARY_LEVEL| "debug", "info", "warn", "error", or "none"| logs the per-module summary message at the chosen level, or none at all. Default is "info". |
+|JULIA\_DEBUG | "Inherit" | Enables printing of more detailed `Debug` level messsages. Default is "" which only prints `Info` level messages |
+|INHERIT\_JL\_SUMMARY_LEVEL| "debug", "info", "warn", "error", or "none"| logs the per-module summary message at the chosen level, or none at all. Default is "info". |
+
+```@index
+```
+
+```@docs
+@abstractbase
+@implement
+
+```

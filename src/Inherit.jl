@@ -115,7 +115,8 @@ function process_supertype(currentmod::Module, S::Union{Symbol, Expr})
 	moduleS = objS.name.module
 	nameS = objS.name.name			
 	if !isdefined(moduleS, H_TYPESPEC)
-		error("no @abstractbase's have been declared in $moduleS")
+		@debug "Subtyping from $moduleS.$nameS but it is not an @abstractbase."
+		return nothing, nothing, nothing
 	end	
 	U_DBSPEC = getproperty(moduleS, H_TYPESPEC)		#either foreign or local DBSPEC
 	if !haskey(U_DBSPEC, nameS)
@@ -149,8 +150,18 @@ function process_supertype(currentmod::Module, S::Union{Symbol, Expr})
 end
 
 "
-TODO: evaluate in a temporary module
-TODO: support mutable types
+Creates a Julia abstract type, while allowing field and method declarations to be inherited by subtypes created with the `@implement` macro.
+
+Requires a single expression of one of following forms:
+
+	struct T ... end
+	mutable struct T ... end
+	struct T <: S ... end
+	mutable struct T <: S ... end
+
+Supertype __S__ can be any valid Julia abstract type. In addition, if __S__ was created with `@abstractbase`, all its fields and method declarations will be prepended to __T__'s own definitions, and they will be inherited by any subtype of __T__. 
+
+__Mutability__ must be the same as the supertype's mutability.
 "
 macro abstractbase(ex)
 	setup_module_db(__module__)
@@ -196,6 +207,9 @@ macro abstractbase(ex)
 		DBS[identT] = Vector{Symbol}()
 		if S !== nothing		#copy fields and methods from the super type to the subtype 
 			identS, U_DBSPEC, U_DBM = process_supertype(__module__, S)
+			if identS === nothing	#S is a valid abstract type but not an @abstractbase. Proceed as if T is at top of hierarchy
+				return nothing
+			end
 			specS = U_DBSPEC[identS.basename]	#using S is not reliable here because it may have module path in it
 			specT = DBSPEC[T]
 			if specT.ismutable != specS.ismutable
@@ -434,7 +448,16 @@ macro postinit(ex)
 end
 
 "
-Method declarations may come from a foreign module, in which case, method implementations must belong to functions in that foreign module. If there's no name clash, the foreign modules's function is automatically imported into the implementing module (i.e. your current module). If there is a name clash, you must qualify the method implementation with the foreign module's name.
+Creates a Julia `struct` or `mutable struct` type which contains all the fields of its supertype. Method interfaces declared (and inherited) by the supertype are required to be implemented.
+
+Requires a single expression of one of following forms:
+
+	struct T <: S ... end
+	mutable struct T <: S ... end
+
+__Mutability__ must be the same as the supertype's mutability.
+
+Method declarations may be from a __foreign module__, in which case method implementations must be added to the foreign module's function. If there is no name clash, the foreign modules's function is _automatically imported_ into the __implementing module__ (i.e. your current module). If there is a name clash, you must qualify the function name with the foreign module's name.
 "
 macro implement(ex)
 	setup_module_db(__module__)
@@ -452,6 +475,11 @@ macro implement(ex)
 
 	### evaluate the supertype expression so we can get the correct module
 	identS, U_DBSPEC, U_DBM = process_supertype(__module__, S)
+	if identS === nothing
+		errorstr = "$S is not a valid type for implementation by $T; it was not declared with @abstractbase"
+		return :(throw(ImplementError($errorstr)))
+	end
+
 	specS = U_DBSPEC[identS.basename]		#using S is not reliable here because it may have module path in it
 	if ismutable != specS.ismutable
 		errorstr = "mutability of $S is $(specS.ismutable) but that of $T is $ismutable"

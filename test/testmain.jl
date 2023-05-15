@@ -252,7 +252,7 @@ end
 "
 module M6
 	using Inherit, Test, ..M1
-	@abstractbase mutable struct Fruit 
+	@abstractbase mutable struct Fruit <: Any
 		weight
 		const seller
 	end
@@ -264,6 +264,8 @@ module M6
 	@testset "mutability tests" begin	
 		@test_throws "mutability" @implement struct Apple <: Fruit end
 		@test_throws "mutability" @implement mutable struct Cherry <: Berry end
+		@test_throws "Any is not a valid type for implementation by BlackBerry" @implement mutable struct BlackBerry <: Any end
+
 		apple = Apple(1.0, "washington")
 		apple.weight = 2.0
 		@test_throws "const field" apple.seller = "california"
@@ -282,7 +284,6 @@ module M1
 	function cost(item::Fruit, unitprice::Number)
 		unitprice * item.weight
 	end		
-	@show fullname(@__MODULE__)
 end
 
 module M2
@@ -295,8 +296,6 @@ module M2
 
 	@implement struct BlueBerry <: Berry end
 	function pack(time::Number, bunch::Dict{String, AbstractVector{<:BlueBerry}})::Float32 end
-	for name in fullname(@__MODULE__)
-		println(name)
-	end
+
 end
 end
