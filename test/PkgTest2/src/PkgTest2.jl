@@ -29,7 +29,7 @@ end
 
 	Inherit.setreportlevel(@__MODULE__, ThrowError)
 	@test_nothrows PkgTest2.__init__()
-	@test_throws SettingsError Inherit.setreportlevel(@__MODULE__, DisableInitCheck)
+	@test_throws SettingsError Inherit.setreportlevel(@__MODULE__, SkipInitCheck)
 end
 
 end # module PkgTest2

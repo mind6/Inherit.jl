@@ -101,7 +101,7 @@ module M2
 
 		Inherit.setreportlevel(@__MODULE__, ThrowError)
 		@test_nothrows M2.__init__()
-		@test_throws SettingsError Inherit.setreportlevel(@__MODULE__, DisableInitCheck)
+		@test_throws SettingsError Inherit.setreportlevel(@__MODULE__, SkipInitCheck)
 	end
 	# Inherit.setreportlevel(@__MODULE__, ShowMessage)
 end
@@ -150,7 +150,7 @@ multilevel inheritance
 module M4
 	using Inherit, Test, ..M1
 	export Berry
-	Inherit.setreportlevel(@__MODULE__, DisableInitCheck)
+	Inherit.setreportlevel(@__MODULE__, SkipInitCheck)
 
 	@abstractbase struct Berry <: M1.Fruit
 		cluster::Int
@@ -244,6 +244,28 @@ module M4clientfail
 		@test_throws ImplementError __init__()
 	end
 	Inherit.setreportlevel(@__MODULE__, ShowMessage)
+end
+
+"@abstractbase only - check interface doc"
+module M5
+	using Inherit, Test
+
+	@abstractbase struct Fruit
+		weight::Float64
+		"comments from declarations are appended at the end of method comments"
+		function cost(fruit::Fruit, unitprice::Float64) end
+	end
+	"this implementation satisfies the interface declaration for all subtypes of Fruit"
+	function cost(item::Fruit, unitprice::Real)
+		unitprice * item.weight
+	end		
+	
+	@postinit function myinit()
+		@testset "doc check" begin
+			@test replace(string(@doc(cost)), r"\s"=>"") == replace(
+			"this implementation satisfies the interface declaration for all subtypes of Fruit"* "comments from declarations are appended at the end of method comments", r"\s"=>"")
+		end
+	end	
 end
 
 "

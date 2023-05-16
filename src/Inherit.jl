@@ -32,7 +32,7 @@ A parametric type signature can be supertype of abstract type signature
 
 """
 module Inherit
-export @abstractbase, @implement, @interface, @postinit, @test_nothrows, InterfaceError, ImplementError, SettingsError, (<--), setglobalreportlevel, setreportlevel, ThrowError, ShowMessage, DisableInitCheck
+export @abstractbase, @implement, @interface, @postinit, @test_nothrows, InterfaceError, ImplementError, SettingsError, (<--), setglobalreportlevel, setreportlevel, ThrowError, ShowMessage, SkipInitCheck
 
 using MacroTools
 import Test:@test
@@ -309,7 +309,7 @@ function create_module__init__()::Expr
 		Inherit.DB_MODULES[fullname(@__MODULE__)] = @__MODULE__	#we couldn't store this in macro processing stage. Only runtime module objects can be stored.
 
 		modentry = Inherit.getmoduleentry(@__MODULE__)
-		if modentry.rl == DisableInitCheck 
+		if modentry.rl == SkipInitCheck 
 			@goto process_postinit 
 		end
 
@@ -341,40 +341,38 @@ function create_module__init__()::Expr
 				n_subtypes += length(SUBTYPES)
 				n_signatures += length(decls)
 
-				if isempty(SUBTYPES)	
-					@debug "$(Inherit.tostring(identS)) has no subtypes; not requiring method implementations"
-					continue 
-				end
+				### even with no subtypes, we need to go through decls to document interfaces
+				# if isempty(SUBTYPES)	
+				# 	@debug "$(Inherit.tostring(identS)) has no subtypes; not requiring method implementations"
+				# 	continue 
+				# end
 
 				@debug "Inherit.jl requires interface definitions defined in base type $(Inherit.tostring(identS)) to be satisfied"
-				for decl in decls							# required sigs
-					### get method table for function defined in the current, implementing module (not the declaration module)
+				for decl in decls							# required method declarations
 					funcname = Inherit.getfuncname(decl)
-					# __defmodule__ = Inherit.getmodule(@__MODULE__, decl.defmodulename)
 					__defmodule__ = Inherit.DB_MODULES[decl.defmodulename]
-					func = nothing
-					mt = nothing
-					if isdefined(__defmodule__, funcname)
-						func = getproperty(__defmodule__, funcname)
-						# func = (__defmodule__).eval(funcname)
-						mt = methods(func)
-						# @show mt
-					end
-					if mt === nothing || isempty(mt)
-						errorstr = "$(nameof(__defmodule__)) does not define a method for `$funcname`, which is required by:\n$(decl.line)"
-						handle_error(errorstr)
-						continue
-					end
 
 					### make sure the defmodule can access the implementing type
 					isforeign = __defmodule__ != @__MODULE__
 					if isforeign		#skips installing a handle if local module, so we don't litter a module with handles unnecessarily.
 						setproperty!(__defmodule__, LM_HANDLE, @__MODULE__)
-					elseif decl.linecomment !== nothing	
-						#for local module, set the @doc for method declarations
+					elseif decl.linecomment !== nothing 	#for local module, set the @doc for method declarations
 						@debug "documenting `$funcname` with `$(decl.linecomment)`"
 						expr = :(@doc $(decl.linecomment) $funcname)
 						(@__MODULE__).eval(expr)
+					end
+
+					### the declaration function has already been imported, get its method table
+					func = nothing
+					mt = nothing
+					if isdefined(__defmodule__, funcname)
+						func = getproperty(__defmodule__, funcname)
+						mt = methods(func)
+					end
+					if mt === nothing || isempty(mt)
+						errorstr = "$(nameof(__defmodule__)) does not define a method for `$funcname`, which is required by:\n$(decl.line)"
+						handle_error(errorstr)
+						continue
 					end
 
 					@debug "$(identS.basename) requires $(decl.sig) for each subtype"
@@ -440,8 +438,8 @@ Executed after Inherit.jl verfies interfaces. You may have any number of @postin
 macro postinit(ex)
 	@assert MacroTools.isdef(ex) "function definition expected"
 	modentry = Inherit.getmoduleentry(__module__)
-	if modentry.rl == DisableInitCheck
-		return :(throw(SettingsError("module is set to DisableInitCheck. @postinit requires ThrowError or ShowMessage setting.")))
+	if modentry.rl == SkipInitCheck
+		return :(throw(SettingsError("module is set to SkipInitCheck. @postinit requires ThrowError or ShowMessage setting.")))
 	else
 		push!(modentry.postinit, __module__.eval(ex))
 	end

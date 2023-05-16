@@ -74,7 +74,10 @@ module M1
 	@implement struct Apple <: Fruit end
 	@implement struct Orange <: Fruit end
 	@implement struct Kiwi <: Fruit end
-	function cost(fruit::Union{Apple, Kiwi}, unitprice::Float64) 1.0 end
+
+	function cost(fruit::Union{Apple, Kiwi}, unitprice::Float64) 
+		1.0 
+	end
 end
 
 # output
@@ -82,11 +85,11 @@ ERROR: InitError: ImplementError: subtype M1.Orange missing Tuple{typeof(M1.cost
 function cost(fruit::Fruit, unitprice::Float64)
 [...]
 ```
-Upon loading module `M1`, Inherit.jl throws an `ImplementError` from the `__init__()` function, telling you that it's looking for a method signature that can dispatch `cost(::M1.Orange, ::Float64)`. It makes no complaints about `Apple` and `Kiwi` because their dispatch can be satisfied
+Upon loading module `M1`, Inherit.jl throws an `ImplementError` from the `__init__()` function, telling you that it's looking for a method signature that can dispatch `cost(::M1.Orange, ::Float64)`. It makes no complaints about `Apple` and `Kiwi` because their dispatch can be satisfied.
 
 ## The `@postinit` macro
 
-The presence of an `@abstractbase` or `@implement` causes Inherit.jl to generate and __overwrite__ the module's `__init__()` function. To execute your own module initiation code, the `@postinit` macro is available. It accepts a function as argument and registers that function to be executed after `__init__()`. Multiple occurrences of `@postinit` will result in each function being called successively.
+The presence of an `@abstractbase` or `@implement` causes Inherit.jl to generate and __overwrite__ the module's `__init__()` function. To execute your own module initialization code, the `@postinit` macro is available. It accepts a function as argument and registers that function to be executed after `__init__()`. Multiple occurrences of `@postinit` will result in each function being called successively.
 
 # Putting it all together
 
@@ -98,9 +101,11 @@ module M1
 
 	@abstractbase struct Fruit
 		weight::Float64
+		"docstrings from declarations are appended at the end of method comments"
 		function cost(fruit::Fruit, unitprice::Float64) end
 	end
-	function cost(item::Fruit, unitprice::Number)
+	"this implementation satisfies the interface declaration for all subtypes of Fruit"
+	function cost(item::Fruit, unitprice::Real)
 		unitprice * item.weight
 	end		
 end
@@ -110,18 +115,29 @@ module M2
 	import ..M1
 
 	@abstractbase struct Berry <: M1.Fruit
+		"the supertype can appear in a variety of positions"
 		function pack(time::Int, bunch::Dict{String, AbstractVector{<:Berry}})::Float32 end
 	end
 
 	@implement struct BlueBerry <: Berry end
+
+	"the implementing method's argument types can be broader than the interface's argument types"
 	function pack(time::Number, bunch::Dict{String, AbstractVector{<:BlueBerry}})::Float32 end
 
+	@postinit function myinit()
+		println("docstring of imported `cost` function:\n", @doc cost)
+	end
 end
 nothing
 
 # output
 [ Info: Inherit.jl: processed M1 with 1 supertype having 1 method requirement. 0 subtypes were checked with 0 missing methods.
 [ Info: Inherit.jl: processed M2 with 1 supertype having 2 method requirements. 1 subtype was checked with 0 missing methods.
+docstring of imported `cost` function:
+this implementation satisfies the interface declaration for all subtypes of Fruit
+ 
+docstrings from declarations are appended at the end of method comments
+
 ```
 
 ## Changing the reporting level

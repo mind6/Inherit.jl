@@ -3,9 +3,9 @@ ThrowError: Checks for interface requirements in the module `__init__()` functio
 
 ShowMessage: Same as above, but an error level log message is shown rather than throwing exception.
 
-DisableInitCheck: Will still create `__init__` function (which sets up datastructures that may be needed by other modules) but won't verfiy interfaces. Can not be set if `__init__` has already been created
+SkipInitCheck: Will still create `__init__` function (which sets up datastructures that may be needed by other modules) but won't verfiy interfaces. Can not be set if `__init__` has already been created
 "
-@enum RL ThrowError ShowMessage DisableInitCheck
+@enum RL ThrowError ShowMessage SkipInitCheck
 
 @kwdef mutable struct ModuleEntry 
 	rl::RL = ThrowError
@@ -31,7 +31,7 @@ function setreportlevel(mod::Module, rl::RL)
 	# if ME already has been created, we cannot change the between DisableInit and other states 
 	if haskey(DB_FLAGS, mod)
 		me = getmoduleentry(mod)
-		if (rl==DisableInitCheck) ⊻ (me.rl==DisableInitCheck)
+		if (rl==SkipInitCheck) ⊻ (me.rl==SkipInitCheck)
 			throw(SettingsError("cannot change from current setting from $(me.rl) to $(rl)"))
 		else
 			me.rl = rl
