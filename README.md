@@ -189,3 +189,5 @@ function sugarlevel(apple::Apple) "depends on "*join(fieldnames(Apple),", ") end
 ```
 "depends on weight, sugartype, coresize"
 ```
+
+## See [documentation](https://mind6.github.io/Inherit.jl/) for API details.
