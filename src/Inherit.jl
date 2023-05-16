@@ -4,7 +4,6 @@ Inherit.jl let's the user inherit fields and interface definitions from a supert
 We have steered away from using the term "traits" to avoid confusion with extensible [Holy traits](https://invenia.github.io/blog/2019/11/06/julialang-features-part-2/) widely used in Julia libraries. While @interface's can be multiplely inherited, they cannot be added to an existing concrete type from another package. 
 
 # Limitations
-Concrete type must be defined in the same module as the method definitions specific t.
 
 Short form function definitions such as `f() = nothing` are not supported for method declaration; use the long form `function f() end` instead. Using short form for method implementation can be problematic as well (e.g. when the function is imported from another module); it's generally safer to use long form.
 
@@ -12,23 +11,14 @@ Just like Julia types, definitions should be given in the order of their depende
 
 Inherit.jl has no special knowledge about constructors (inner or otherwise). They're treated like normal functions.
 
-The package's macros must be used at the toplevel of a module. @abstractbase relies on world age to advance in order to detect a "real" method was defined (to differentiate the case where the method definition has identical signature as interface specification). 
+A method's signature given *only* by its positional arguments is unique. If you define a method with the same positional arguments but different keyword arguments from a previously defined method, it will overwrite the previous method. Keyword arguments simply do not participate in method dispatch.
 
-If you cannot return to toplevel (e.g. being wrapped in a @testset macro), a work around is to modify the signature slightly but retain the call paths that you require.
-
-Currently we only handle long form interface definitions such as `function f() end`.
-
-TODO: multiple levels of interface (not hard)
-TODO: multiple interfaces (may be hard)
-TODO: what about parametric types?
-
-A method's signature given *only* by its positional arguments is unique. If you define a method with the same positional arguments but different keyword arguments from a previously defined method, it will overwrite the previous method. Keyword arguments simply do not particular in method dispatch.
+# Special notes
 
 A parametric type signature can be supertype of abstract type signature
 	Tuple{typeof(f), Real} <: Tuple{typeof(f), T} where T<:Number
 
 `typeof(f).name.mt` grows for each evaluation of method definition, even if it overwrites a previous definition. It is not the same as `methods(f)`
-	
 
 """
 module Inherit
@@ -342,11 +332,6 @@ function create_module__init__()::Expr
 				n_signatures += length(decls)
 
 				### even with no subtypes, we need to go through decls to document interfaces
-				# if isempty(SUBTYPES)	
-				# 	@debug "$(Inherit.tostring(identS)) has no subtypes; not requiring method implementations"
-				# 	continue 
-				# end
-
 				@debug "Inherit.jl requires interface definitions defined in base type $(Inherit.tostring(identS)) to be satisfied"
 				for decl in decls							# required method declarations
 					funcname = Inherit.getfuncname(decl)
@@ -360,6 +345,12 @@ function create_module__init__()::Expr
 						@debug "documenting `$funcname` with `$(decl.linecomment)`"
 						expr = :(@doc $(decl.linecomment) $funcname)
 						(@__MODULE__).eval(expr)
+					end
+
+					### do not require method table if there are no subtypes
+					if isempty(SUBTYPES)	
+						@debug "$(Inherit.tostring(identS)) has no subtypes; not requiring method implementations"
+						continue 
 					end
 
 					### the declaration function has already been imported, get its method table
@@ -433,7 +424,9 @@ function create_module__init__()::Expr
 end
 
 "
-Executed after Inherit.jl verfies interfaces. You may have any number of @postinit blocks; they will execute in the sequence order in which they're defined.
+Requires a single function definition expression.
+
+The function will be executed after Inherit.jl verfies interfaces. You may have any number of @postinit blocks; they will execute in the order in which they were defined.
 "
 macro postinit(ex)
 	@assert MacroTools.isdef(ex) "function definition expected"

@@ -1,10 +1,3 @@
-"
-ThrowError: Checks for interface requirements in the module `__init__()` function, and throws an exception if requirements are not met. Creates `__init__` upon first use of @abstractbase or @implement.  
-
-ShowMessage: Same as above, but an error level log message is shown rather than throwing exception.
-
-SkipInitCheck: Will still create `__init__` function (which sets up datastructures that may be needed by other modules) but won't verfiy interfaces. Can not be set if `__init__` has already been created
-"
 @enum RL ThrowError ShowMessage SkipInitCheck
 
 @kwdef mutable struct ModuleEntry 
@@ -18,14 +11,20 @@ const DB_FLAGS = Dict{Module, ModuleEntry}()
 GLOBAL_RL::RL = ThrowError
 
 "
-This sets the default reporting level of modules; it does not change the setting for modules that already have a ModuleEntry.
+Sets the default reporting level of modules; it does not change the setting for modules that already loaded an Inherit.jl macro.
 "
 function setglobalreportlevel(rl::RL)
 	global GLOBAL_RL = rl
 end
 
 "
-Takes precedence over global report level.
+Sets the level of reporting for the given module. Takes precedence over global report level.
+
+`ThrowError`: Checks for interface requirements in the module `__init__()` function, throwing an exception if requirements are not met. Creates `__init__()` upon first use of @abstractbase or @implement.  
+
+`ShowMessage`: Same as above, but an `Error` level log message is produced rather than throwing exception.
+
+`SkipInitCheck`: Still creates `__init__()` function (which sets up datastructures that may be needed by other modules) but won't verfiy interfaces. Cannot be set if `__init__()` has already been created
 "
 function setreportlevel(mod::Module, rl::RL)
 	# if ME already has been created, we cannot change the between DisableInit and other states 

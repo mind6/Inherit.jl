@@ -32,7 +32,7 @@ generates:
 """
 ```
 @implement struct Apple <: Fruit <-- SweetFood 
-	weight::Float32
+	size::Float32
 end
 ```
 generates:

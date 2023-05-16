@@ -58,11 +58,11 @@ Note that the definition of `cost` function inside of `Fruit` is interpreted as 
 
 # Interaction with modules
 
-Object oriented programming is most helpful when applications have grown across multiple modules. Even though __Inherit.jl__ can be used inside scripts, its true use case is to assert __common interfaces__ shared by different data types. __Verification__ of method declarations takes place in the `__init__()` function of the module which the implementing type belongs to (i.e. where the `@implement` macro is used).
+An object oriented programming style can be useful to applications that span across multiple modules. Even though __Inherit.jl__ can be used inside of scripts, its true usefulness is to assert __common interfaces__ shared by different data types from different modules. __Verification__ of method declarations take place in the `__init__()` function of the module which the implementing type belongs to (i.e. where the `@implement` macro is used).
 
 ## The module `__init__()` function
 
-The specially named function `__init__()` is called after the module has been fully loaded by Julia. If an interface definition has not been met, an exception will be thrown.
+The specially named module-level (i.e. top-level) function `__init__()` is called after the module has been fully loaded by Julia. If an interface definition has not been met, an exception will be thrown.
 
 ```jldoctest
 module M1
@@ -89,7 +89,7 @@ Upon loading module `M1`, Inherit.jl throws an `ImplementError` from the `__init
 
 ## The `@postinit` macro
 
-The presence of an `@abstractbase` or `@implement` causes Inherit.jl to generate and __overwrite__ the module's `__init__()` function. To execute your own module initialization code, the `@postinit` macro is available. It accepts a function as argument and registers that function to be executed after `__init__()`. Multiple occurrences of `@postinit` will result in each function being called successively.
+The presence of an `@abstractbase` or `@implement` macro causes Inherit.jl to generate and __overwrite__ the module's `__init__()` function. To execute your own module initialization code, the `@postinit` macro is available. It accepts a function as argument and registers that function to be executed after `__init__()`. Multiple occurrences of `@postinit` will result in each function being called successively.
 
 # Putting it all together
 
@@ -101,7 +101,7 @@ module M1
 
 	@abstractbase struct Fruit
 		weight::Float64
-		"docstrings from declarations are appended at the end of method comments"
+		"docstrings of method declarations are appended at the end of method docstrings"
 		function cost(fruit::Fruit, unitprice::Float64) end
 	end
 	"this implementation satisfies the interface declaration for all subtypes of Fruit"
@@ -136,16 +136,63 @@ nothing
 docstring of imported `cost` function:
 this implementation satisfies the interface declaration for all subtypes of Fruit
  
-docstrings from declarations are appended at the end of method comments
+docstrings of method declarations are appended at the end of method docstrings
 
 ```
 
+We can make a few observations regarding the above example:
+- A __summary message__ is printed after each module is loaded, showing Inherit.jl is active.
+- __Multiple levels of inheritance__ is possible across multiple modules.
+- Method definitions __are quite flexible__. In a method declaration, you can name a supertype anywhere that's valid in Julia, and it will be checked for proper dispatch of subtypes.
+- The function `M1.cost` was __automatically imported__ into module `M2`. The function still lives in module `M1` together with its method instances, but it is available in `M2` through the symbol `cost`.
+  - While not shown in this example, you can __extend `M1.cost`__ by writing `function cost(...) ... end` in module `M2`
+- __Docstrings are preserved__. Docstring for method declarations are added to the end of any  method docstrings. 
+
 ## Changing the reporting level
- 
-By default, module `__init__()` writes a summary message at the `Info` log level. You can change this by setting `ENV["INHERIT_JL_SUMMARY_LEVEL"]` to one of `["debug", "info", "warn", "error", "none"]`.
+
+To have module `__init__()` log an error message instead of throwing an exception, add `setreportlevel(ShowMessage)` near the front of the module. You can also disable interface checking altogether with `setreportlevel(DisableInitCheck)`
+
+By default, module `__init__()` writes its summary message at the `Info` log level. You can change this by setting `ENV["INHERIT_JL_SUMMARY_LEVEL"]` to one of `["debug", "info", "warn", "error", "none"]`.
 
 # Limitations
+
+Parametric types are currently not supported. Basic support for parametric concrete types is being planned.
+
+Methods are examined only for their positional arguments. Inherit.jl has no special knowledge of keyword arguments, but this may improve in the future.
+
+Inherit.jl has no special knowledge about constructors (inner or otherwise). They're treated like normal functions. As a result, constructor inheritance is not available.
+
+Short form function definitions such as `f() = nothing` are not supported for method declaration; use the long form `function f() end` instead. Using short form for method implementation can be problematic as well (e.g. when the function is imported from another module); it's generally safer to use long form.
+
 ## Multiple inheritance
+
+Multiple inheritance is currently not supported, but is being planned. It will have the following syntax:
+
+```julia
+@abstractbase struct Fruit
+	weight::Float64
+	function cost(fruit::Fruit, unitprice::Float64) end
+end
+
+@trait struct SweetFood
+	sugartype::Symbol
+	"
+	Subtype must define:
+		function sugarlevel(obj::T) end  
+	where T<--SweetFood
+	"
+	function sugarlevel(obj<--SweetFood) end  
+end
+
+@implement struct Apple <: Fruit _ <-- SweetFood 
+	coresize::Int
+end
+
+function sugarlevel(apple::Apple) "depends on "*join(fieldnames(Apple),", ") end	
+```
+```
+"depends on weight, sugartype, coresize"
+```
 
 # API
 | environment variable | value | description|
@@ -159,5 +206,7 @@ By default, module `__init__()` writes a summary message at the `Info` log level
 ```@docs
 @abstractbase
 @implement
-
+@postinit
+setreportlevel
+setglobalreportlevel
 ```

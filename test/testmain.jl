@@ -259,11 +259,28 @@ module M5
 	function cost(item::Fruit, unitprice::Real)
 		unitprice * item.weight
 	end		
-	
+
 	@postinit function myinit()
-		@testset "doc check" begin
+		@testset "doc check - @abstractbase only" begin
 			@test replace(string(@doc(cost)), r"\s"=>"") == replace(
 			"this implementation satisfies the interface declaration for all subtypes of Fruit"* "comments from declarations are appended at the end of method comments", r"\s"=>"")
+		end
+	end	
+end
+
+"@abstractbase only - check interface doc with empty method table"
+module M5b
+	using Inherit, Test
+
+	@abstractbase struct Fruit
+		weight::Float64
+		"comments from declarations are appended at the end of method comments"
+		function cost(fruit::Fruit, unitprice::Float64) end
+	end
+	
+	@postinit function myinit()
+		@testset "doc check - empty method table" begin
+			@test replace(string(@doc(cost)), r"\s"=>"") == replace("comments from declarations are appended at the end of method comments", r"\s"=>"")
 		end
 	end	
 end
