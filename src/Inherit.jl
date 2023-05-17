@@ -427,6 +427,12 @@ end
 Requires a single function definition expression.
 
 The function will be executed after Inherit.jl verfies interfaces. You may have any number of @postinit blocks; they will execute in the order in which they were defined.
+
+The function name must be different from `__init__`, or it will overwrite Inherit.jl interface verification code. Furthermore, you module must not contain any function named `__init__`. Initialization code must use this macro with a changed name, or with an anonymous function. For example, 
+
+	@postinit function __myinit__() ... end
+	@postinit () -> begin ... end
+
 "
 macro postinit(ex)
 	@assert MacroTools.isdef(ex) "function definition expected"

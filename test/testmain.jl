@@ -319,7 +319,7 @@ module M7
 	using Inherit
 	# @abstractbase struct S end
 	initialized::Bool = false
-	@postinit function myinit()
+	@postinit () -> begin
 		M7.initialized = true
 	end
 end
