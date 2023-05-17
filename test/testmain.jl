@@ -313,6 +313,7 @@ module M6
 end
 
 begin
+
 "post init by itself"
 module M7
 	using Inherit
@@ -326,7 +327,23 @@ end
 @testset "postinit by itself" begin
 	@test M7.initialized == true
 end
+
+"silently ovewriting Inherit.jl's __init__()"
+module M8
+	using Inherit, ..M1
+	@implement struct Coconut <: Fruit  end
+	initialized::Bool = false
+	function __init__()
+		M8.initialized = true
+	end
 end
+
+@testset "__init__ gets silently overwritten" begin
+	@test M8.initialized == true
+end
+
+end
+
 
 module doctest1
 module M1
