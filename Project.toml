@@ -1,7 +1,7 @@
 name = "Inherit"
 uuid = "341b8389-5eed-42ab-a01e-622c6bedf032"
 authors = ["mind6 <kirbyzhang@live.com> and contributors"]
-version = "0.1.1-DEV"
+version = "0.1.0"
 
 [deps]
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
