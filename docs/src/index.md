@@ -116,16 +116,19 @@ module M2
 
 	@abstractbase struct Berry <: M1.Fruit
 		"the supertype can appear in a variety of positions"
-		function pack(time::Int, bunch::Dict{String, AbstractVector{<:Berry}})::Float32 end
+		function pack(time::Int, bunch::Dict{String, <:AbstractVector{Berry}}) end
 	end
 
 	@implement struct BlueBerry <: Berry end
 
 	"the implementing method's argument types can be broader than the interface's argument types"
-	function pack(time::Number, bunch::Dict{String, AbstractVector{<:BlueBerry}})::Float32 end
+	function pack(time::Number, bunch::Dict{String, <:AbstractVector{BlueBerry}}) 
+		println("packing things worth \$$(cost(first(values(bunch))[1], 1.5))")
+	end
 
 	@postinit function myinit()
 		println("docstring of imported `cost` function:\n", @doc cost)
+		pack(0, Dict(""=>[BlueBerry(2.0)]))
 	end
 end
 nothing
@@ -138,6 +141,7 @@ this implementation satisfies the interface declaration for all subtypes of Frui
  
 docstrings of method declarations are appended at the end of method docstrings
 
+packing things worth $3.0
 ```
 
 We can make a few observations regarding the above example:
