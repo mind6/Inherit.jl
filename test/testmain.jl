@@ -312,6 +312,22 @@ module M6
 	end
 end
 
+begin
+"post init by itself"
+module M7
+	using Inherit
+	# @abstractbase struct S end
+	initialized::Bool = false
+	@postinit function myinit()
+		M7.initialized = true
+	end
+end
+
+@testset "postinit by itself" begin
+	@test M7.initialized == true
+end
+end
+
 module doctest1
 module M1
 	using Inherit

@@ -76,7 +76,7 @@ include("reportlevel.jl")
 include("utils.jl")
 
 function setup_module_db(mod::Module)
-	### only done once on first use of @abstractbase or @implement in a module
+	### only done once on first use of @abstractbase or @implement or @postinit in a module
 	if !isdefined(mod, H_TYPESPEC)
 		setproperty!(mod, H_TYPESPEC, Dict{
 			Symbol, 											#abstract base type (local only)
@@ -430,6 +430,8 @@ The function will be executed after Inherit.jl verfies interfaces. You may have 
 "
 macro postinit(ex)
 	@assert MacroTools.isdef(ex) "function definition expected"
+	setup_module_db(__module__)
+
 	modentry = Inherit.getmoduleentry(__module__)
 	if modentry.rl == SkipInitCheck
 		return :(throw(SettingsError("module is set to SkipInitCheck. @postinit requires ThrowError or ShowMessage setting.")))

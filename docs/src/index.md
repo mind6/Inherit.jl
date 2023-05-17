@@ -154,7 +154,7 @@ We can make a few observations regarding the above example:
 
 ## Changing the reporting level
 
-To have module `__init__()` log an error message instead of throwing an exception, add `setreportlevel(ShowMessage)` near the front of the module. You can also disable interface checking altogether with `setreportlevel(DisableInitCheck)`
+To have module `__init__()` log an error message instead of throwing an exception, add `setreportlevel(ShowMessage)` near the front of the module. You can also disable interface checking altogether with `setreportlevel(SkipInitCheck)`
 
 By default, module `__init__()` writes its summary message at the `Info` log level. You can change this by setting `ENV["INHERIT_JL_SUMMARY_LEVEL"]` to one of `["debug", "info", "warn", "error", "none"]`.
 
