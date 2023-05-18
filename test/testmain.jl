@@ -242,8 +242,8 @@ module M4clientfail
 	@testset "3 levels and 3 modules not satisfied" begin
 		Inherit.setreportlevel(@__MODULE__, ThrowError)
 		@test_throws ImplementError __init__()
+		Inherit.setreportlevel(@__MODULE__, ShowMessage)
 	end
-	Inherit.setreportlevel(@__MODULE__, ShowMessage)
 end
 
 "@abstractbase only - check interface doc"
@@ -312,8 +312,6 @@ module M6
 	end
 end
 
-begin
-
 "post init by itself"
 module M7
 	using Inherit
@@ -342,32 +340,26 @@ end
 	@test M8.initialized == true
 end
 
-end
-
-
-module doctest1
-module M1
-	using Inherit
-
-	@abstractbase struct Fruit
-		weight::Float64
-		function cost(fruit::Fruit, unitprice::Float64) end
-	end
-	function cost(item::Fruit, unitprice::Number)
-		unitprice * item.weight
-	end		
-end
-
-module M2
-	using Inherit
+"parametric argument types must be matched exactly"
+module M9fail
+	using Inherit, Test
 	import ..M1
 
 	@abstractbase struct Berry <: M1.Fruit
-		function pack(time::Int, bunch::Dict{String, AbstractVector{<:Berry}})::Float32 end
+		"the supertype can appear in a variety of positions"
+		function pack(time::Int, bunch::Dict{String, <:AbstractVector{Berry}}) end
 	end
 
 	@implement struct BlueBerry <: Berry end
-	function pack(time::Number, bunch::Dict{String, AbstractVector{<:BlueBerry}})::Float32 end
 
-end
+	"the implementing method's argument types can be broader than the interface's argument types"
+	function pack(time::Number, bunch::Dict{String, <:AbstractVector{BlueBerry}}) 
+		println("packing things worth \$$(cost(first(values(bunch))[1], 1.5))")
+	end
+
+	@testset "parametric argument types must be matched exactly" begin
+		Inherit.setreportlevel(@__MODULE__, ThrowError)
+		@test_throws ImplementError __init__()
+		Inherit.setreportlevel(@__MODULE__, ShowMessage)
+	end
 end

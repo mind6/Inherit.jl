@@ -115,20 +115,27 @@ module M2
 	import ..M1
 
 	@abstractbase struct Berry <: M1.Fruit
-		"the supertype can appear in a variety of positions"
-		function pack(time::Int, bunch::Dict{String, <:AbstractVector{Berry}}) end
+		"
+		In a declaration, the supertype can appear in a variety of positions. 
+		A supertype argument can be matched with itself or a __narrower__ type.
+		Supertypes inside containers must be matched with itself or a __broader__ type.
+		"
+		function pack(time::Int, ::Berry, bunch::Vector{Berry}) end
 	end
 
 	@implement struct BlueBerry <: Berry end
 
-	"the implementing method's argument types can be broader than the interface's argument types"
-	function pack(time::Number, bunch::Dict{String, <:AbstractVector{BlueBerry}}) 
-		println("packing things worth \$$(cost(first(values(bunch))[1], 1.5))")
+	"
+	The implementing method's argument types can be broader than the interface's argument types.
+	Note that `AbstractVector{<:BlueBerry}` will not work in the 3rd argument, because a `Vector{Berry}` argument will have no dispatch.
+	"
+	function pack(time::Number, berry::BlueBerry, bunch::AbstractVector{<:M1.Fruit}) 
+		println("packing things worth \$$(cost(first(bunch), 1.5) + cost(berry, 1.5))")
 	end
 
 	@postinit function myinit()
 		println("docstring of imported `cost` function:\n", @doc cost)
-		pack(0, Dict(""=>[BlueBerry(2.0)]))
+		pack(0, BlueBerry(1.0), [BlueBerry(2.0)])
 	end
 end
 nothing
@@ -141,7 +148,7 @@ this implementation satisfies the interface declaration for all subtypes of Frui
  
 docstrings of method declarations are appended at the end of method docstrings
 
-packing things worth $3.0
+packing things worth $4.5
 ```
 
 We can make a few observations regarding the above example:
@@ -151,6 +158,9 @@ We can make a few observations regarding the above example:
 - The function `M1.cost` was __automatically imported__ into module `M2`. The function still lives in module `M1` together with its method instances, but it is available in `M2` through the symbol `cost`.
   - While not shown in this example, you can __extend `M1.cost`__ by writing `function cost(...) ... end` in module `M2`
 - __Docstrings are preserved__. Docstring for method declarations are added to the end of any  method docstrings. 
+
+!!! info 
+	When implementing a method declaration, supertypes inside of containers like (e.g. `Pair`, `Vector`, `Dict`) _may not be_ substituted with a subtype, because Julia's type parameters are _invariant_.
 
 ## Changing the reporting level
 

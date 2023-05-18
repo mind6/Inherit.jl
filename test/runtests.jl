@@ -13,8 +13,8 @@ using MacroTools, Test, Documenter
 using Inherit
 
 ### The choice of debug level for Inherit controls will module __init__ will throw exceptions (high log state than debug) or print error messages only (Debug log level)
-# ENV["JULIA_DEBUG"] = nothing
-ENV["JULIA_DEBUG"] = "Inherit"
+ENV["JULIA_DEBUG"] = nothing
+# ENV["JULIA_DEBUG"] = "Inherit"
 ENV[Inherit.E_SUMMARY_LEVEL] = "info"
 # delete!(ENV,Inherit.E_SUMMARY_LEVEL)
 

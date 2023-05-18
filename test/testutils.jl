@@ -67,12 +67,13 @@ end
 		[:( function f(x::M99.Main.M1.Fruit) end),  :( function f(x::M99.Main.M1.Fruit) end)],
 		[:( function f(x::Main.Fruit) end),  :( function f(x::Main.Fruit) end)],
 
-		### reductions work even when used as type parameters
-		[:( function f(x::Pair{Fruit, Int}) end), :( function f(x::Pair{M2.Orange,Int}) end)],
-		[:( function f(x::Pair{<:Fruit, Int}) end), :( function f(x::Pair{<:M2.Orange, Int}) end)],
-		[:( function f(x::Pair{<:Main.M1.Fruit, Int}) end), :( function f(x::Pair{<:M2.Orange, Int}) end)],
+		### parametric types are now ignored
+		[:(function f(::Int, x::Vector{Berry}) end), :(function f(::Int, x::Vector{Berry}) end)],
+		[:( function f(x::Pair{Fruit, Int}) end), :( function f(x::Pair{Fruit,Int}) end)],
+		[:( function f(x::Pair{<:Fruit, Int}) end), :( function f(x::Pair{<:Fruit, Int}) end)],
+		[:( function f(x::Pair{<:Main.M1.Fruit, Int}) end), :( function f(x::Pair{<:Main.M1.Fruit, Int}) end)],
 		[:( function f(::Int, x::Vector{<:Pair{<:M1.M1.M1.Fruit, Int}}, dummy2) end), 
-			:( function f(::Int, x::Vector{<:Pair{<:M2.Orange, Int}}, dummy2) end)],
+			:( function f(::Int, x::Vector{<:Pair{<:M1.M1.M1.Fruit, Int}}, dummy2) end)],
 	]
 	for (expr, expected) in testexprs
 		res = Inherit.reducetype(expr, (:Main, :M1), :Fruit, (:Main, :M2), :Orange)
@@ -83,6 +84,7 @@ end
 	end
 
 end
+
 # Inherit.reducetype(:( function f(x::Main.M1.M1.Fruit) end), (:Main, :M1), :Fruit, (:Main, :M2), :Orange) |> dump
 # @capture( :( f(x::Fruit) ), f(_::T_ ) )
 # @capture( :( f(x::M1.M1.Fruit) ), f(_::m__.T_ ) )
@@ -104,15 +106,31 @@ end
 # 	# @macroexpand @testmacro struct S end
 # 	@testmacro struct S end
 # end
-begin
+# begin
 	
-	@capture(:(mutable struct Apple <: Fruit nothing end), 
-		(mutable struct T_Symbol <:S_ lines__ end) | (mutable struct T_ lines__ end))
-	# @capture(:(struct Apple <:Fruit end), (struct T_ <: S_ end) | (struct T_ lines__ end))
-	@show T S 
-end
-@capture(:(func(x::Int) = 1), (f_(args__) = body_) | (struct S s end))
-@show f args
+# 	@capture(:(mutable struct Apple <: Fruit nothing end), 
+# 		(mutable struct T_Symbol <:S_ lines__ end) | (mutable struct T_ lines__ end))
+# 	# @capture(:(struct Apple <:Fruit end), (struct T_ <: S_ end) | (struct T_ lines__ end))
+# 	@show T S 
+# end
+# @capture(:(func(x::Int) = 1), (f_(args__) = body_) | (struct S s end))
+# @show f args
+# begin
+# 	@capture(:(fruit::M1.Fruit), (_::pre_.T_))
+# 	@show T, pre
+# 	@capture(:(fruit::Vector{M1.Fruit}), (_::pre_.T_))
+# 	@show T, pre
+
+# 	@capture(:(fruit::Fruit), (P_::T_Symbol))
+# 	@show T, P
+# 	@capture(:(::Fruit), ::T_Symbol)
+# 	@show T
+# 	@capture(:(fruit::Vector{Fruit}), _::T_Symbol)
+# 	@show T
+
+# 	@capture(:(::Vector{Fruit}), ::T_Symbol)
+# 	@show T
+# end
 
 @testset "not implemented" begin
 	struct T1 <: AbstractVector{Int} end
