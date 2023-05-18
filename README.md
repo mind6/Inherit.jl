@@ -1,13 +1,16 @@
-# Inherit
-
-[![Build Status](https://github.com/mind6/Inherit.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/mind6/Inherit.jl/actions/workflows/CI.yml?query=branch%3Amain)
-[![Coverage](https://codecov.io/gh/mind6/Inherit.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/mind6/Inherit.jl)
-
 # Introduction 
 
 Inherit.jl is used to inherit fields and interface definitions from a supertype. It supports programming with an **object-oriented flavor** in Julia, whenever this is more appropriate than developing under traditional Julia patterns. 
 
 **Fields** defined in a supertype are automatically inherited by each subtype, and **method declarations** are checked for each subtype's implementation. An **inheritance hierachy** across multiple modules is supported. To accomplish this, macro processing is used to construct **native Julia types**, which allows the the full range of Julia syntax to be used in most situations.
+
+```@meta
+DocTestSetup = quote
+	import Inherit
+	ENV["JULIA_DEBUG"] = ""
+	ENV[Inherit.E_SUMMARY_LEVEL] = "info"
+end
+```
 
 # Quick Start
 
@@ -112,20 +115,27 @@ module M2
 	import ..M1
 
 	@abstractbase struct Berry <: M1.Fruit
-		"the supertype can appear in a variety of positions"
-		function pack(time::Int, bunch::Dict{String, <:AbstractVector{Berry}}) end
+		"
+		In a declaration, the supertype can appear in a variety of positions. 
+		A supertype argument can be matched with itself or a __narrower__ type.
+		Supertypes inside containers must be matched with itself or a __broader__ type.
+		"
+		function pack(time::Int, ::Berry, bunch::Vector{Berry}) end
 	end
 
 	@implement struct BlueBerry <: Berry end
 
-	"the implementing method's argument types can be broader than the interface's argument types"
-	function pack(time::Number, bunch::Dict{String, <:AbstractVector{BlueBerry}}) 
-		println("packing things worth \$$(cost(first(values(bunch))[1], 1.5))")
+	"
+	The implementing method's argument types can be broader than the interface's argument types.
+	Note that `AbstractVector{<:BlueBerry}` will not work in the 3rd argument, because a `Vector{Berry}` argument will have no dispatch.
+	"
+	function pack(time::Number, berry::BlueBerry, bunch::AbstractVector{<:M1.Fruit}) 
+		println("packing things worth \$$(cost(first(bunch), 1.5) + cost(berry, 1.5))")
 	end
 
 	@postinit function myinit()
 		println("docstring of imported `cost` function:\n", @doc cost)
-		pack(0, Dict(""=>[BlueBerry(2.0)]))
+		pack(0, BlueBerry(1.0), [BlueBerry(2.0)])
 	end
 end
 ```
@@ -137,8 +147,7 @@ this implementation satisfies the interface declaration for all subtypes of Frui
  
 docstrings of method declarations are appended at the end of method docstrings
 
-packing things worth $3.0
-
+packing things worth $4.5
 ```
 
 We can make a few observations regarding the above example:
@@ -149,9 +158,12 @@ We can make a few observations regarding the above example:
   - While not shown in this example, you can __extend `M1.cost`__ by writing `function cost(...) ... end` in module `M2`
 - __Docstrings are preserved__. Docstring for method declarations are added to the end of any  method docstrings. 
 
+!!! info 
+	When implementing a method declaration, supertypes inside of containers like (e.g. `Pair`, `Vector`, `Dict`) _may not be_ substituted with a subtype, because Julia's type parameters are _invariant_.
+
 ## Changing the reporting level
 
-To have module `__init__()` log an error message instead of throwing an exception, add `setreportlevel(ShowMessage)` near the front of the module. You can also disable interface checking altogether with `setreportlevel(DisableInitCheck)`
+To have module `__init__()` log an error message instead of throwing an exception, add `setreportlevel(ShowMessage)` near the front of the module. You can also disable interface checking altogether with `setreportlevel(SkipInitCheck)`
 
 By default, module `__init__()` writes its summary message at the `Info` log level. You can change this by setting `ENV["INHERIT_JL_SUMMARY_LEVEL"]` to one of `["debug", "info", "warn", "error", "none"]`.
 
