@@ -4,14 +4,6 @@ Inherit.jl is used to inherit fields and interface definitions from a supertype.
 
 **Fields** defined in a supertype are automatically inherited by each subtype, and **method declarations** are checked for each subtype's implementation. An **inheritance hierachy** across multiple modules is supported. To accomplish this, macro processing is used to construct **native Julia types**, which allows the the full range of Julia syntax to be used in most situations.
 
-```@meta
-DocTestSetup = quote
-	import Inherit
-	ENV["JULIA_DEBUG"] = ""
-	ENV[Inherit.E_SUMMARY_LEVEL] = "info"
-end
-```
-
 # Quick Start
 
 Use `@abstractbase` to declare an abstract supertype, and use `@implement` to inherit from such a type. Standard `struct` syntax is used.
