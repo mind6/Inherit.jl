@@ -289,14 +289,18 @@ function create_module__init__()::Expr
 	
 	qnodeM = QuoteNode(H_METHODS)
 	qnodeS = QuoteNode(H_SUBTYPES)
+
 	"
 	In the user module's init, we need to throw exceptions directly, since there's no eval on the return value.
+
 	NOTE that only the quoted expression has access to the correct @__MODULE__. Any utility functions of Inherit.jl must receive this as a parameter, instead of invoking @__MODULE__ directly.
+
+	NOTE that we should specify standard library functions explicitly, so we don't inadvertently invoke functions defined locally in the init's module.
 	"
 	quote function __init__()
 		if Inherit.isprecompiling() return end		#Can't use eval when precompiling, which "closes" a package. If Pkg2 loads precompiled Pkg1, Pkg1.__init__() will fire, which fails when trying to eval into closed Pkg1.
 
-		Inherit.DB_MODULES[fullname(@__MODULE__)] = @__MODULE__	#we couldn't store this in macro processing stage. Only runtime module objects can be stored.
+		Inherit.DB_MODULES[Base.fullname(@__MODULE__)] = @__MODULE__	#we couldn't store this in macro processing stage. Only runtime module objects can be stored.
 
 		modentry = Inherit.getmoduleentry(@__MODULE__)
 		if modentry.rl == SkipInitCheck 
@@ -316,9 +320,9 @@ function create_module__init__()::Expr
 		end
 
 		if isdefined(@__MODULE__, $qnodeM)
-			DBM = getproperty(@__MODULE__, $qnodeM)
-			DBS = getproperty(@__MODULE__, $qnodeS)
-			LOCALMOD = fullname(@__MODULE__)
+			DBM = Base.getproperty(@__MODULE__, $qnodeM)
+			DBS = Base.getproperty(@__MODULE__, $qnodeS)
+			LOCALMOD = Base.fullname(@__MODULE__)
 			LM_HANDLE  = Symbol(:__Inherit_jl_, LOCALMOD[end])
 			for (identS, decls) ∈ DBM
 				n_supertypes += 1
@@ -328,8 +332,8 @@ function create_module__init__()::Expr
 				# 	setproperty!(__supertypemod__, LM_HANDLE, @__MODULE__)
 				# end
 				SUBTYPES = DBS[identS]
-				n_subtypes += length(SUBTYPES)
-				n_signatures += length(decls)
+				n_subtypes += Base.length(SUBTYPES)
+				n_signatures += Base.length(decls)
 
 				### even with no subtypes, we need to go through decls to document interfaces
 				@debug "Inherit.jl requires interface definitions defined in base type $(Inherit.tostring(identS)) to be satisfied"
@@ -340,7 +344,7 @@ function create_module__init__()::Expr
 					### make sure the defmodule can access the implementing type
 					isforeign = __defmodule__ != @__MODULE__
 					if isforeign		#skips installing a handle if local module, so we don't litter a module with handles unnecessarily.
-						setproperty!(__defmodule__, LM_HANDLE, @__MODULE__)
+						Base.setproperty!(__defmodule__, LM_HANDLE, @__MODULE__)
 					elseif decl.linecomment !== nothing 	#for local module, set the @doc for method declarations
 						@debug "documenting `$funcname` with `$(decl.linecomment)`"
 						expr = :(@doc $(decl.linecomment) $funcname)
@@ -348,7 +352,7 @@ function create_module__init__()::Expr
 					end
 
 					### do not require method table if there are no subtypes
-					if isempty(SUBTYPES)	
+					if Base.isempty(SUBTYPES)	
 						@debug "$(Inherit.tostring(identS)) has no subtypes; not requiring method implementations"
 						continue 
 					end
@@ -357,11 +361,11 @@ function create_module__init__()::Expr
 					func = nothing
 					mt = nothing
 					if isdefined(__defmodule__, funcname)
-						func = getproperty(__defmodule__, funcname)
-						mt = methods(func)
+						func = Base.getproperty(__defmodule__, funcname)
+						mt = Base.methods(func)
 					end
-					if mt === nothing || isempty(mt)
-						errorstr = "$(nameof(__defmodule__)) does not define a method for `$funcname`, which is required by:\n$(decl.line)"
+					if mt === nothing || Base.isempty(mt)
+						errorstr = "$(Base.nameof(__defmodule__)) does not define a method for `$funcname`, which is required by:\n$(decl.line)"
 						handle_error(errorstr)
 						continue
 					end
