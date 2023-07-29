@@ -69,13 +69,13 @@ end
 
 		### parametric types with specific type parameters are ignored
 		[:(function f(::Int, x::Vector{Berry}) end), :(function f(::Int, x::Vector{Berry}) end)],
-		[:( function f(::Pair{Fruit, Int}) end), :( function f(::Pair{Fruit,Int}) end)],
+		[:( function f(::Pair{M1.Fruit, Int}) end), :( function f(::Pair{M1.Fruit,Int}) end)],
 
 		### parameters types with range parameters will still be ignored. If a subtype range parameter is allowed, it would be possible to create a container type with the supertype range parameter, which would have no dispatch, despite what the method declaration says.
-		[:( function f(x::Pair{<:Fruit, Int}) end), :( function f(x::Pair{<:Fruit, Int}) end)],
-		[:( function f(::Pair{<:Main.M1.Fruit, Int}) end), :( function f(::Pair{<:Main.M1.Fruit, Int}) end)],
+		[:( function f(x::Pair{<:Fruit, Int}) end), :( function f(x::Pair{<:M2.Orange, Int}) end)],
+		[:( function f(::Pair{Float32, <:Main.M1.Fruit}) end), :( function f(::Pair{Float32, <:M2.Orange}) end)],
 		[:( function f(::Int, x::Vector{<:Pair{<:M1.M1.M1.Fruit, Int}}, dummy2) end), 
-			:( function f(::Int, x::Vector{<:Pair{<:M1.M1.M1.Fruit, Int}}, dummy2) end)],
+			:( function f(::Int, x::Vector{<:Pair{<:M2.Orange, Int}}, dummy2) end)],
 	]
 	for (expr, expected) in testexprs
 		res = Inherit.reducetype(expr, (:Main, :M1), :Fruit, (:Main, :M2), :Orange)
@@ -87,7 +87,7 @@ end
 
 end
 
-# @capture( :( f(::Vector{<:Type{<:Main.M1.M1.Fruit}}) ), f(::Vector{T_})) 
+# Inherit.reducetype(:(function f(::Vector{<:M1.Fruit}) end), (:Main, :M1), :Fruit, (:Main, :M2), :Orange)
 # @capture( :( f(x::Vector{<:Type{<:Fruit}}) ), f(P_:: A_{<: T_} ) ); @show P A T
 # @capture( :( f(x::M1.M1.Fruit) ), f(_::m__.T_ ) )
 # @capture( :( f(x::Vector{Fruit}) ), f(_::_{T_} ) )
@@ -95,6 +95,7 @@ end
 # @capture( :( f(x::Vector{<:M1.Fruit}) ), f(_::_{<:m__.T_} ) )
 # @capture( :( f(x::Fruit) ), f(_::T_Symbol ) )
 # @capture( :( f(x::Fruit) ), f(_::T_Symbol <: S_Symbol ) )
+# @capture( :( <:Fruit), <:T_Symbol )
 # @capture( :( f(x::Fruit<:Super) ), f(_::T_Symbol <: S_Symbol) )
 # @capture( :( f(x::Fruit<:Super) ), f(_::T_Symbol ) )
 # begin

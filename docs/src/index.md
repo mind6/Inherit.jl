@@ -121,6 +121,11 @@ module M2
 		Supertypes inside containers must be matched with itself or a __broader__ type.
 		"
 		function pack(time::Int, ::Berry, bunch::Vector{Berry}) end
+
+		"
+		However, if you prefix the supertype with `<:`, it becomes a ranged parameter. You can match it with a ranged subtype parameter.
+		"
+		function move(::Vector{<:Berry}, location) end
 	end
 
 	@implement struct BlueBerry <: Berry end
@@ -133,22 +138,31 @@ module M2
 		println("packing things worth \$$(cost(first(bunch), 1.5) + cost(berry, 1.5))")
 	end
 
+	"
+	The subtype `BlueBerry` can be used in a container, because it's a ranged parameter. Make sure nested containers are all ranged parameters; otherwise, the interface cannot be satisfied.
+	"
+	function move(bunch::Vector{<:BlueBerry}, location) 
+		println("moving $(length(bunch)) blueberries to $location")
+	end
+
 	@postinit function myinit()
 		println("docstring of imported `cost` function:\n", @doc cost)
 		pack(0, BlueBerry(1.0), [BlueBerry(2.0)])
+		move([BlueBerry(1.0), BlueBerry(2.0)], "the truck")
 	end
 end
 nothing
 
 # output
 [ Info: Inherit.jl: processed M1 with 1 supertype having 1 method requirement. 0 subtypes were checked with 0 missing methods.
-[ Info: Inherit.jl: processed M2 with 1 supertype having 2 method requirements. 1 subtype was checked with 0 missing methods.
+[ Info: Inherit.jl: processed M2 with 1 supertype having 3 method requirements. 1 subtype was checked with 0 missing methods.
 docstring of imported `cost` function:
 this implementation satisfies the interface declaration for all subtypes of Fruit
  
 docstrings of method declarations are appended at the end of method docstrings
 
 packing things worth $4.5
+moving 2 blueberries to the truck
 ```
 
 We can make a few observations regarding the above example:
@@ -160,7 +174,7 @@ We can make a few observations regarding the above example:
 - __Docstrings are preserved__. Docstring for method declarations are added to the end of any  method docstrings. 
 
 !!! info 
-	When implementing a method declaration, supertypes inside of containers like (e.g. `Pair`, `Vector`, `Dict`) _may not be_ substituted with a subtype, because Julia's type parameters are _invariant_.
+	When implementing a method declaration, supertypes inside of containers like (e.g. `Pair`, `Vector`, `Dict`) _may not be_ substituted with a subtype, because Julia's type parameters are _invariant_. However, a ranged supertype parameter (prefixed with `<:`) can be substituted with a ranged subtype.
 
 ## Changing the reporting level
 

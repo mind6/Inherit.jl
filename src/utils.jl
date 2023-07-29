@@ -198,34 +198,50 @@ This assumes the result will be evaluated inside basemodule. Prefixes are stripp
 function reducetype(expr::Expr, basemodule::NTuple{N, Symbol}, basetype::Symbol, implmodule::NTuple{M, Symbol}, impltype::Symbol)::Expr where {N, M}
 	implmodule = strip_prefix(implmodule, basemodule)
 
-	function param_expr(P)
+	function param_expr(P::Union{Symbol, Nothing})
 		if P !== nothing
 			Expr(:(::), P, to_qualified_expr(implmodule..., impltype))
 		else
 			Expr(:(::), to_qualified_expr(implmodule..., impltype))
 		end
 	end
+	
+	function matches_basemodule(pre::Union{Expr, Symbol})
+		idx = N
+		while @capture(pre, pre2_.$(basemodule[idx]))
+			if lastsymbol(pre2) != basemodule[idx]
+				idx -= 1
+			end
+			if idx == 0 break end
+			pre = pre2
+		end
+		return idx > 0 && pre == basemodule[idx]		# all the prefixes were consumed while matching basemodule, we know it's a match
+	end
 
 	MacroTools.postwalk(x->begin
-		P = T = nothing
+		pre = P = T = nothing
+
+		#captures the unqualified basetype by itself and reduces it
 		if (@capture(x, P_::T_Symbol) || @capture(x, ::T_Symbol)) && T == basetype 	
-			#captures the unqualified basetype by itself and reduces it
 			param_expr(P)
+
+		#captures qualified basetype, keep reducing the qualifiers as long as it ends with basemodule
 		elseif (@capture(x, P_::pre_.T_) || @capture(x, ::pre_.T_)) && T == basetype
-			#captures a qualified basetype, keep reducing the qualifiers as long as it ends with $basemodule
-			idx = N
-			while @capture(pre, pre2_.$(basemodule[idx]))
-				if lastsymbol(pre2) != basemodule[idx]
-					idx -= 1
-				end
-				if idx == 0 break end
-				pre = pre2
-			end
-			if idx > 0 && pre == basemodule[idx]		# all the prefixes were consumed while matching basemodule, we're sure this is the object we want
+			if matches_basemodule(pre)
 				param_expr(P)
 			else
 				x
 			end
+
+		#captures a ranged type parameter
+		elseif (@capture(x, <:T_Symbol) || @capture(x, <:pre_.T_)) && T == basetype
+			if pre === nothing || matches_basemodule(pre)
+				Expr(:(<:), to_qualified_expr(implmodule..., impltype))
+			else
+				x
+			end
+
+		#nothing captured
 		else
 			x
 		end
