@@ -18,6 +18,7 @@ ENV["JULIA_DEBUG"] = nothing
 ENV[Inherit.E_SUMMARY_LEVEL] = "info"
 # delete!(ENV,Inherit.E_SUMMARY_LEVEL)
 
+#FIXME: error out when overwriting a previous defined module __init__. Note that this won't prevent the user from overwriting Inherit.jl's __init__, but it's still helpful in reducing errors.
 include("testutils.jl")
 include("testmain.jl")
 

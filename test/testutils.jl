@@ -55,7 +55,7 @@ end
 	testexprs = [
 		### basetype and any number of basemodule qualifiers gets reduced to implmodule.impltype
 		[:( function f(x::Fruit) end), :( function f(x::M2.Orange) end)],
-		[:( function f(x::M1.Fruit) end),  :( function f(x::M2.Orange) end)],
+		[:( function f(::M1.Fruit) end),  :( function f(::M2.Orange) end)],
 		[:( function f(x::M1.M1.Fruit) end),  :( function f(x::M2.Orange) end)],
 		[:( function f(x::Main.M1.M1.Fruit) end),  :( function f(x::M2.Orange) end)],
 
@@ -67,11 +67,13 @@ end
 		[:( function f(x::M99.Main.M1.Fruit) end),  :( function f(x::M99.Main.M1.Fruit) end)],
 		[:( function f(x::Main.Fruit) end),  :( function f(x::Main.Fruit) end)],
 
-		### parametric types are now ignored
+		### parametric types with specific type parameters are ignored
 		[:(function f(::Int, x::Vector{Berry}) end), :(function f(::Int, x::Vector{Berry}) end)],
-		[:( function f(x::Pair{Fruit, Int}) end), :( function f(x::Pair{Fruit,Int}) end)],
+		[:( function f(::Pair{Fruit, Int}) end), :( function f(::Pair{Fruit,Int}) end)],
+
+		### parameters types with range parameters will still be ignored. If a subtype range parameter is allowed, it would be possible to create a container type with the supertype range parameter, which would have no dispatch, despite what the method declaration says.
 		[:( function f(x::Pair{<:Fruit, Int}) end), :( function f(x::Pair{<:Fruit, Int}) end)],
-		[:( function f(x::Pair{<:Main.M1.Fruit, Int}) end), :( function f(x::Pair{<:Main.M1.Fruit, Int}) end)],
+		[:( function f(::Pair{<:Main.M1.Fruit, Int}) end), :( function f(::Pair{<:Main.M1.Fruit, Int}) end)],
 		[:( function f(::Int, x::Vector{<:Pair{<:M1.M1.M1.Fruit, Int}}, dummy2) end), 
 			:( function f(::Int, x::Vector{<:Pair{<:M1.M1.M1.Fruit, Int}}, dummy2) end)],
 	]
@@ -85,8 +87,8 @@ end
 
 end
 
-# Inherit.reducetype(:( function f(x::Main.M1.M1.Fruit) end), (:Main, :M1), :Fruit, (:Main, :M2), :Orange) |> dump
-# @capture( :( f(x::Fruit) ), f(_::T_ ) )
+# @capture( :( f(::Vector{<:Type{<:Main.M1.M1.Fruit}}) ), f(::Vector{T_})) 
+# @capture( :( f(x::Vector{<:Type{<:Fruit}}) ), f(P_:: A_{<: T_} ) ); @show P A T
 # @capture( :( f(x::M1.M1.Fruit) ), f(_::m__.T_ ) )
 # @capture( :( f(x::Vector{Fruit}) ), f(_::_{T_} ) )
 # @capture( :( f(x::Vector{Vector{Fruit}}) ), f(_::_{T_} ) )
