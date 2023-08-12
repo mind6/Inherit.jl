@@ -9,7 +9,9 @@
 - a demo class using SparseMatrix
 
 ## 0.2
-- constructor inheritance
+- constructor inheritance using @virtualnew macro
+- supports subclassing ranged container types (i.e. vector{<:mytype})
+- no more method deletion warnings during precompile
 
 # Current
 ## 0.1.0
