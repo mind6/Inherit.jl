@@ -298,12 +298,14 @@ function create_module__init__()::Expr
 	NOTE that we should specify standard library functions explicitly, so we don't inadvertently invoke functions defined locally in the init's module.
 	"
 	quote function __init__()
-		if Inherit.isprecompiling() return end		#Can't use eval when precompiling, which "closes" a package. If Pkg2 loads precompiled Pkg1, Pkg1.__init__() will fire, which fails when trying to eval into closed Pkg1.
+		#TODO: add a test case that requires @postinit function to successfuly execute during precompilation. (previously it was skipping @postinits during precompilation)
 
 		Inherit.DB_MODULES[Base.fullname(@__MODULE__)] = @__MODULE__	#we couldn't store this in macro processing stage. Only runtime module objects can be stored.
 
 		modentry = Inherit.getmoduleentry(@__MODULE__)
-		if modentry.rl == SkipInitCheck 
+		println("$(@__MODULE__) contains module entry $modentry")
+		if modentry.rl == SkipInitCheck ||
+				Inherit.isprecompiling()	#Can't use eval when precompiling. Precompilation "closes" a package. If Pkg2 loads precompiled Pkg1, Pkg1.__init__() will fire, which fails when trying to eval into closed Pkg1.
 			@goto process_postinit 
 		end
 
@@ -427,6 +429,7 @@ function create_module__init__()::Expr
 	end end 	#end quote
 end
 
+#FIXME  @postinit seems broken after precompilation. needs test case.
 "
 Requires a single function definition expression.
 
@@ -443,11 +446,14 @@ macro postinit(ex)
 	setup_module_db(__module__)
 
 	modentry = Inherit.getmoduleentry(__module__)
+
 	if modentry.rl == SkipInitCheck
 		return :(throw(SettingsError("module is set to SkipInitCheck. @postinit requires ThrowError or ShowMessage setting.")))
 	else
 		push!(modentry.postinit, __module__.eval(ex))
+		println("module entry $modentry added under $__module__")
 	end
+	nothing
 end
 
 "
@@ -552,6 +558,11 @@ end
 function (<--)(a ,b)
 	@error "$a does not implement interface $b"
 	false
+end
+
+function __init__()
+	@warn "Inherit.jl loaded with $DB_FLAGS"
+	atexit(() -> @warn "Inherit.jl UNLOADED with $DB_FLAGS")
 end
 
 end # module Inherit
