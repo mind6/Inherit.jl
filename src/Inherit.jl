@@ -303,7 +303,7 @@ function create_module__init__()::Expr
 		Inherit.DB_MODULES[Base.fullname(@__MODULE__)] = @__MODULE__	#we couldn't store this in macro processing stage. Only runtime module objects can be stored.
 
 		modentry = Inherit.getmoduleentry(@__MODULE__)
-		println("$(@__MODULE__) contains module entry $modentry")
+		# println("$(@__MODULE__) contains module entry $modentry")
 		if modentry.rl == SkipInitCheck ||
 				Inherit.isprecompiling()	#Can't use eval when precompiling. Precompilation "closes" a package. If Pkg2 loads precompiled Pkg1, Pkg1.__init__() will fire, which fails when trying to eval into closed Pkg1.
 			@goto process_postinit 
@@ -561,8 +561,9 @@ function (<--)(a ,b)
 end
 
 function __init__()
-	@warn "Inherit.jl loaded with $DB_FLAGS"
-	atexit(() -> @warn "Inherit.jl UNLOADED with $DB_FLAGS")
+	# NOTE @debug won't work here. JULIA_DEBUG seting doesn't apply to module init?
+	# @warn "Inherit.jl loaded with $DB_FLAGS"
+	# atexit(() -> @warn "Inherit.jl UNLOADED with $DB_FLAGS")
 end
 
 end # module Inherit
