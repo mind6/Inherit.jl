@@ -217,19 +217,26 @@ macro abstractbase(ex)
 		return ret
 	end
 
+	#NOTE: we evaluate function prototypes in a shadow module, and get the signature as if it was evaluated in the parent module. This allows us to keep the parent module free of prototype functions, which can cause ambiguities.
+	shadow = createshadowmodule(__module__)
+
 	comment = nothing
 	for line in lines
 		if @capture(line, x_String_string)
 			comment = x				#save comment to apply to next line. Note that we take a slight cheat by ignoring line number nodes. Unlike proper Julia, comments will apply even across blank lines.
 		else
+			#FIXME: move method declaration stuff to module __init__, so it will work with precompilation
 			if isexpr(line, :function)
 				### the interface requires a method that is supertype of this to be defined --- EXCEPT that occurences of T can be replaced with a subtype of T --- with later world age than this.
-				f = __module__.eval(line)		#evaluated in calling module without hygiene pass
+				# f = shadow.eval(line)		#evaluated in calling module without hygiene pass
+				f = Base.eval(shadow, line)		#evaluated in calling module without hygiene pass
 				m = last_method_def(f)
-				@debug "interface specified by $T: $(m.sig), age $(m.primary_world)"
+				parent_f = __module__.eval(:(function $(m.name) end))	#declare just the function in the original module. this allows us to store the correct func type in the signature. It will not create any methods in the parent module.
+				m_sig = set_sig_functype(__module__, m.sig, typeof(parent_f))
+				@debug "interface specified by $T: $(m_sig), age $(m.primary_world)"
 
 				# duplicate fields will be detected by the implementing struct. duplicate methods are detected by us.
-				if !all(p->p.sig != m.sig, DBM[identT])
+				if !all(p->p.sig != m_sig, DBM[identT])
 					ret=reset_type() 	#clears everything we've seen so far about the type, so it isn't misused? how necessary is this?
 					if ret !== nothing
 						return ret
@@ -240,10 +247,11 @@ macro abstractbase(ex)
 				end
 
 				#NOTE: evaluating `@doc comment $(nameof(f))` here will only have a temporary effect. To persist documentation it must be done at the module __init__
-				push!(DBM[identT], MethodDeclaration((MOD, T, line, comment, m.sig)))
+				push!(DBM[identT], MethodDeclaration((MOD, T, line, comment, m_sig)))
 				comment = nothing
-				Base.delete_method(m)   # `WARNING: method deletion during Module precompile may lead to undefined behavior` This warning shows up even when deleting in module __init__.
+				# Base.delete_method(m)   # `WARNING: method deletion during Module precompile may lead to undefined behavior` This warning shows up even when deleting in module __init__.
 
+				#NOTE: Julia 1.10 no longer allows deleting the function prototype during precompilation. (It's necessary to evaluate the prototype expression in the module in which it appears, in order to get the correct types for the function parameters.) Our solution is to leave prototype defined, but detect when its body is empty, indicating there isn't any user implementation of the prototype.
 			elseif isexpr(line, :(::), :const)
 				push!(DBSPEC[T].fields, line)
 			elseif line isa Symbol 		#Any is implied, convert to expression
@@ -390,7 +398,7 @@ function create_module__init__()::Expr
 						#restore the functype signature from the original declaration
 						reducedsig = Inherit.set_sig_functype(__defmodule__, reducedmethod.sig, decl.sig.types[1])
 						#this is safe to delete because it's on the renamed function
-						Base.delete_method(reducedmethod)						
+						Base.delete_method(reducedmethod)  #NOTE: it's okay to delete_method here because we're in the module init not the precompilation phase.						
 
 						for m in mt				#methods implemented on function of required sig
 							if decl.sig <: m.sig	# being a supersig in the unmodified version satisfies all subtypes. 
@@ -451,7 +459,7 @@ macro postinit(ex)
 		return :(throw(SettingsError("module is set to SkipInitCheck. @postinit requires ThrowError or ShowMessage setting.")))
 	else
 		push!(modentry.postinit, __module__.eval(ex))
-		println("module entry $modentry added under $__module__")
+		@debug "module entry $modentry added under $__module__"
 	end
 	nothing
 end

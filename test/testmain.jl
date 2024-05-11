@@ -60,6 +60,21 @@ module M1
 		@test replace(string(@doc M1.cost), "\n"=>"") == "has more thanone parta useful function"
 	end
 end
+
+#test that we can evaluate an expression in a shadow module, and get the signature as if it was evaluated in the parent module. This allows us to keep the parent module free of prototype functions, which can cause ambiguities.
+@testset "test createshadowmodule" begin
+	M1.eval(:(function testfunc(fruit::M1.Fruit, unitprice::Float32)::Float32 end))
+	m1functype = typeof(M1.testfunc)
+
+	Mshadow = Inherit.createshadowmodule(M1)
+	Base.eval(Mshadow, :(function testfunc(fruit::M1.Fruit, unitprice::Float32)::Float32 end))
+
+	sig1 = Inherit.last_method_def(M1.testfunc).sig
+	sig2 = Inherit.last_method_def(Mshadow.testfunc).sig
+	origsig = Inherit.set_sig_functype(M1, sig2, m1functype)
+	@test origsig == sig1
+end
+
 # :(struct Fruit<:B
 # 	weight::Float32
 # 	"a useful function"

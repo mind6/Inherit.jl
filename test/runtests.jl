@@ -18,7 +18,11 @@ ENV["JULIA_DEBUG"] = nothing
 ENV[Inherit.E_SUMMARY_LEVEL] = "info"
 # delete!(ENV,Inherit.E_SUMMARY_LEVEL)
 
-#FIXME: error out when overwriting a previous defined module __init__. Note that this won't prevent the user from overwriting Inherit.jl's __init__, but it's still helpful in reducing errors.
+#FIXME: Julia 1.10 no longer allows deleting the function prototype during precompilation. (It's necessary to evaluate the prototype expression in the module in which it appears, in order to get the correct types for the function parameters.) Our solution is to leave prototype defined, but detect when its body is empty, indicating there isn't any user implementation of the prototype.
+
+
+
+#TODO: error out when overwriting a previous defined module __init__. Note that this won't prevent the user from overwriting Inherit.jl's __init__, but it's still helpful in reducing errors.
 include("testutils.jl")
 include("testmain.jl")
 
