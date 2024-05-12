@@ -48,13 +48,14 @@ TypeSpec = @NamedTuple{
 	fields::Vector{Expr}		#expressions that define the type's fields (including those inherited from supertype)	
 }
 
-MethodDeclaration = @NamedTuple{
-	defmodulename::Tuple, 	#module where the declaration was originally defined. helps with line reduction
-	defbasename::Symbol,		#base type name where the declaration was originally defined. helps with line reduction
-	line::Expr, 				#the original statement AST
-	linecomment::Union{Nothing, String, Expr},		#String or Expr(:string ...) that documents the line
-	sig::Type{<:Tuple}}		#the original sig evaluated in original module
-
+mutable struct MethodDeclaration 
+	defmodulename::Tuple 	#module where the declaration was originally defined. helps with line reduction
+	defbasename::Symbol		#base type name where the declaration was originally defined. helps with line reduction
+	line::Expr	 				#the original statement AST
+	linecomment::Union{Nothing, String, Expr}		#String or Expr(:string ...) that documents the line
+	funcname::Symbol			#name of function. must be determined at type definition time. It cannot be extracted from sig because it may be empty until module __init__.
+	sig::Union{Nothing, Type{<:Tuple}}		#the original sig evaluated in original module
+end
 struct InterfaceError <: Exception
 	msg::String
 end
@@ -218,8 +219,6 @@ macro abstractbase(ex)
 	end
 
 	#NOTE: we evaluate function prototypes in a shadow module, and get the signature as if it was evaluated in the parent module. This allows us to keep the parent module free of prototype functions, which can cause ambiguities.
-	shadow = createshadowmodule(__module__)
-
 	comment = nothing
 	for line in lines
 		if @capture(line, x_String_string)
@@ -229,25 +228,31 @@ macro abstractbase(ex)
 			if isexpr(line, :function)
 				### the interface requires a method that is supertype of this to be defined --- EXCEPT that occurences of T can be replaced with a subtype of T --- with later world age than this.
 				# f = shadow.eval(line)		#evaluated in calling module without hygiene pass
-				f = Base.eval(shadow, line)		#evaluated in calling module without hygiene pass
-				m = last_method_def(f)
-				parent_f = __module__.eval(:(function $(m.name) end))	#declare just the function in the original module. this allows us to store the correct func type in the signature. It will not create any methods in the parent module.
-				m_sig = set_sig_functype(__module__, m.sig, typeof(parent_f))
-				@debug "interface specified by $T: $(m_sig), age $(m.primary_world)"
+				# f = Base.eval(shadow, line)		#evaluated in calling module without hygiene pass
+				# m = last_method_def(f)
+				# parent_f = __module__.eval(:(function $(m.name) end))	#declare just the function in the original module. this allows us to store the correct func type in the signature. It will not create any methods in the parent module.
+				# m_sig = set_sig_functype(__module__, m.sig, typeof(parent_f))
+				# @debug "interface specified by $T: $(m_sig), age $(m.primary_world)"
 
-				# duplicate fields will be detected by the implementing struct. duplicate methods are detected by us.
-				if !all(p->p.sig != m_sig, DBM[identT])
-					ret=reset_type() 	#clears everything we've seen so far about the type, so it isn't misused? how necessary is this?
-					if ret !== nothing
-						return ret
-					end
+				# # duplicate fields will be detected by the implementing struct. duplicate methods are detected by us.
+				# if !all(p->p.sig != m_sig, DBM[identT])
+				# 	ret=reset_type() 	#clears everything we've seen so far about the type, so it isn't misused? how necessary is this?
+				# 	if ret !== nothing
+				# 		return ret
+				# 	end
 									
-					errorstr = "duplicate method definition at $(__source__.file):$(__source__.line)"
-					return :(throw(InterfaceError($errorstr)))
+				# 	errorstr = "duplicate method definition at $(__source__.file):$(__source__.line)"
+				# 	return :(throw(InterfaceError($errorstr)))
+				# end
+				if !@capture(line, (function funcname_(__) end) | (function funcname_(__)::__ end))
+					errorstr = "Cannot recognize $line as a valid prototype definition. They must look like `function funcname(...) end"
+					return :(throw(InterfaceError($errorstr)))					
 				end
-
+				__module__.eval(:(function $(funcname) end))	#declare just the function in the original module without any methods (which we'll then be unable to delete). This allows the function to be imported by other modules, so their method definitions can be placed correctly in the imported module.
+				
 				#NOTE: evaluating `@doc comment $(nameof(f))` here will only have a temporary effect. To persist documentation it must be done at the module __init__
-				push!(DBM[identT], MethodDeclaration((MOD, T, line, comment, m_sig)))
+				# push!(DBM[identT], MethodDeclaration(MOD, T, line, comment, m_sig))
+				push!(DBM[identT], MethodDeclaration(MOD, T, line, comment, funcname, nothing))
 				comment = nothing
 				# Base.delete_method(m)   # `WARNING: method deletion during Module precompile may lead to undefined behavior` This warning shows up even when deleting in module __init__.
 
@@ -312,8 +317,7 @@ function create_module__init__()::Expr
 
 		modentry = Inherit.getmoduleentry(@__MODULE__)
 		# println("$(@__MODULE__) contains module entry $modentry")
-		if modentry.rl == SkipInitCheck ||
-				Inherit.isprecompiling()	#Can't use eval when precompiling. Precompilation "closes" a package. If Pkg2 loads precompiled Pkg1, Pkg1.__init__() will fire, which fails when trying to eval into closed Pkg1.
+		if Inherit.isprecompiling()	#Can't use eval when precompiling. Precompilation "closes" a package. If Pkg2 loads precompiled Pkg1, Pkg1.__init__() will fire, which fails when trying to eval into closed Pkg1.
 			@goto process_postinit 
 		end
 
@@ -348,12 +352,20 @@ function create_module__init__()::Expr
 				### even with no subtypes, we need to go through decls to document interfaces
 				@debug "Inherit.jl requires interface definitions defined in base type $(Inherit.tostring(identS)) to be satisfied"
 				for decl in decls							# required method declarations
-					funcname = Inherit.getfuncname(decl)
 					__defmodule__ = Inherit.DB_MODULES[decl.defmodulename]
+					if decl.sig === nothing
+						ret = Inherit.populatefunctionsignature!(decl, __defmodule__, identS.basename,  decls)
+						@assert decl.sig !== nothing
+					end
+					if modentry.rl == SkipInitCheck #we still needed to population function signature step above, but we don't verify interfaces						
+						continue
+					end
+					funcname = Inherit.getfuncname(decl)
 
 					### make sure the defmodule can access the implementing type
 					isforeign = __defmodule__ != @__MODULE__
 					if isforeign		#skips installing a handle if local module, so we don't litter a module with handles unnecessarily.
+						@debug "declaration was for $__defmodule__ but we're in $(@__MODULE__); not documenting"
 						Base.setproperty!(__defmodule__, LM_HANDLE, @__MODULE__)
 					elseif decl.linecomment !== nothing 	#for local module, set the @doc for method declarations
 						@debug "documenting `$funcname` with `$(decl.linecomment)`"
@@ -422,7 +434,9 @@ function create_module__init__()::Expr
 					#FIXME: report "Unreachable reached at" error with label here
 				end #end decls
 			end #end DMB
-			if $summarycall != nothing
+			if modentry.rl == SkipInitCheck 
+				@debug "skipping init check"
+			elseif $summarycall != nothing
 				summarystr = """Inherit.jl: processed $(join(LOCALMOD, '.')) with $(Inherit.singular_or_plural(n_supertypes, "supertype")) having $(Inherit.singular_or_plural(n_signatures, "method requirement")). $(Inherit.singular_or_plural(n_subtypes, "subtype was", "subtypes were")) checked with $(Inherit.singular_or_plural(n_errors, "missing method"))."""
 				(@__MODULE__).eval(Expr(:macrocall, $summarycall, LineNumberNode(@__LINE__, @__FILE__), summarystr))
 			end

@@ -116,7 +116,8 @@ function tostring(ident::TypeIdentifier)
 end
 
 function getfuncname(decl::MethodDeclaration)::Symbol
-	nameof(decl.sig.parameters[1].instance)
+	# nameof(decl.sig.parameters[1].instance)
+	decl.funcname
 end
 
 # "
@@ -174,6 +175,36 @@ function createshadowmodule(basemodule::Module)
 	# Base.eval(newmod, :(function eval(x) Base.eval(@__MODULE__, x) end))
 
 	newmod
+end
+
+"""
+this is used by __init__ so we throw errror directly instead of returning a throw error exception.
+"""
+function populatefunctionsignature!(decl::MethodDeclaration, defmodule::Module, T::Symbol, decls::Vector{MethodDeclaration})
+	f = defmodule.eval(decl.line)		#evaluated in calling module without hygiene pass
+	# f = Base.eval(shadow, line)		#evaluated in calling module without hygiene pass
+	m = last_method_def(f)
+	# parent_f = __module__.eval(:(function $(m.name) end))	#declare just the function in the original module. this allows us to store the correct func type in the signature. It will not create any methods in the parent module.
+	# m_sig = set_sig_functype(__module__, m.sig, typeof(parent_f))
+
+	# duplicate fields will be detected by the implementing struct. duplicate methods are detected by us.
+	if !all(p->p.sig != m.sig, decls)
+		# ret=reset_type() 	#clears everything we've seen so far about the type, so it isn't misused? how necessary is this?
+		# if ret !== nothing
+		# 	return ret
+		# end
+						
+		# errorstr = "duplicate method definition at $(__source__.file):$(__source__.line)"
+		errorstr = "method definition duplicates a previous definition: $(decl.line) "
+		throw(InterfaceError(errorstr))
+	end
+	decl.sig = m.sig
+	@debug "interface specified by $T: $(decl.sig), age $(m.primary_world)"
+
+	#NOTE: evaluating `@doc comment $(nameof(f))` here will only have a temporary effect. To persist documentation it must be done at the module __init__
+	# push!(DBM[identT], MethodDeclaration(MOD, T, line, comment, m_sig))
+	# comment = nothing
+	Base.delete_method(m)   # `WARNING: method deletion during Module precompile may lead to undefined behavior` This warning shows up even when deleting in module __init__.
 end
 
 "

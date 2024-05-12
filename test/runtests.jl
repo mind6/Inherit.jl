@@ -38,13 +38,11 @@ include("testmain.jl")
 
 	Pkg.activate(joinpath(dirname(@__FILE__), "PkgTest2"))
 	using PkgTest2
-
-	begin
-		newmod = Inherit.createshadowmodule(PkgTest1)
-		Base.eval(newmod, :(	function cost(fruit::PkgTest1.Fruit, unitprice::Float32)::Float32 end ))
-		s1=methods(newmod.cost)[1].sig
-	end
+	PkgTest2.run()
 	
+	Pkg.activate(joinpath(dirname(@__FILE__), "PkgTest3"))
+	@test_throws "InterfaceError: method definition duplicates a previous definition:" using PkgTest3
+
 	Pkg.activate(savedproj)
 end
 

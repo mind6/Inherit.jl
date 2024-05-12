@@ -1,7 +1,7 @@
 name = "Inherit"
 uuid = "341b8389-5eed-42ab-a01e-622c6bedf032"
 authors = ["mind6 <kirbyzhang@live.com> and contributors"]
-version = "0.1.1"
+version = "0.1.2"
 
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
@@ -10,7 +10,7 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
 MacroTools = "0.5, 0.6, 0.7"
-julia = "1.9"
+julia = "1.9, 1.10"
 
 [extras]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"

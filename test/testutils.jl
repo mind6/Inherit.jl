@@ -100,6 +100,14 @@ end
 
 end
 
+
+@testset "extract function name from expression" begin
+	@test @capture(:(function cost() end), (function name_(__) end) | (function name_(__)::__ end))
+	@test @capture(:(function cost(a, b,c)::Union{Float,Int} end), (function name_(__) end) | (function name_(__)::__ end))
+	@test @capture(:(function cost(a::Int) end), function name_(__) end)
+	@test !@capture(:(function cost end), function name_(__) end)
+	@test !@capture(:(function cost() nothing end), function name_(__) end)
+end
 # Inherit.reducetype(:(function f(::Vector{<:M1.Fruit}) end), (:Main, :M1), :Fruit, (:Main, :M2), :Orange)
 # @capture( :( f(x::Vector{<:Type{<:Fruit}}) ), f(P_:: A_{<: T_} ) ); @show P A T
 # @capture( :( f(x::M1.M1.Fruit) ), f(_::m__.T_ ) )

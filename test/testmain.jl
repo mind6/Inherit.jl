@@ -73,6 +73,7 @@ end
 	sig2 = Inherit.last_method_def(Mshadow.testfunc).sig
 	origsig = Inherit.set_sig_functype(M1, sig2, m1functype)
 	@test origsig == sig1
+
 end
 
 # :(struct Fruit<:B
@@ -88,14 +89,6 @@ Cross module inheritance with name clash resolution
 module M2
 	using Inherit, Test
 	import Main.M1
-
-	@testset "definition errors" begin
-		@test_throws "duplicate method definition" @abstractbase struct Fruit
-			weight::Float32
-			function cost_old(fruit::Fruit, unitprice::Float32)::Float32 end
-			function cost_old(fruit::Fruit, unitprice::Float32)::Float32 end
-		end
-	end
 
 	@abstractbase struct Fruit
 		weight2::Float32
@@ -143,6 +136,9 @@ module M3
 	end
 
 	@testset "implement only; auto imported function" begin
+		#since M3 contains `using M1`, its cost function is identical to that of M1
+		@test all(isequal.(methods(M1.cost), methods(M3.cost)))		 
+
 		Inherit.setreportlevel(@__MODULE__, ThrowError)
 		@test parentmodule(cost) == M1
 		@test_nothrows __init__()
@@ -187,8 +183,12 @@ module M4
 	end
 
 	@testset "multilevel inheritance" begin
-		@test methods(cost)[1].module == M1
-		@test methods(bunchcost)[1].module == M4
+		#since M4 contains `using M1`, its cost function is identical to that of M1
+		@test all(isequal.(methods(M1.cost), methods(M4.cost)))		 
+		
+		#but bunchcost was introduced only in M4
+		@test rand(methods(bunchcost)).module == M4
+
 		@test cost(BlueBerry(1.0, 3), 1.0) == 5.5
 		# Inherit.setreportlevel(@__MODULE__, ThrowError)
 		# @test_nothrows __init__()
