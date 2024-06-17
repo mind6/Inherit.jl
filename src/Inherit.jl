@@ -35,6 +35,8 @@ const H_METHODS::Symbol = :__Inherit_jl_METHODS
 const H_SUBTYPES::Symbol = :__Inherit_jl_SUBTYPES
 #function names we auto imported, so we don't repeat warning messages
 const H_IMPORTED::Symbol = :__Inherit_jl_IMPORTED
+#module property name of ModuleEntry instance, which contains additional info about the module such as reporting and postinit
+const H_FLAGS::Symbol = :__Inherit_jl_FLAGS
 
 const E_SUMMARY_LEVEL = "INHERIT_JL_SUMMARY_LEVEL"
 
@@ -71,7 +73,8 @@ function Base.show(io::IO, x::Union{InterfaceError, ImplementError, SettingsErro
 	print(io, x.msg)
 end
 
-const DB_MODULES = Dict{Tuple, Module}()	#points from fullname(mod) to the mod
+#NOTE: this map lives in Inherit. If a user module modifies this map during precompilation, this modification cannot be baked into Inherit (since it has already been precompiled), nor can the modification be baked into its own image (since the map doesn't live with the user module). Therefore the only place where you should use write to (and read from) this map is during module __init__. This is fine because we only use it to find information about dependencies of a module, which have been previously loaded and have populated this map with their own information. 
+const DB_MODULES = Dict{Tuple, Module}()	#points from fullname(mod) to the mod. 
 
 include("reportlevel.jl")
 include("utils.jl")
@@ -224,26 +227,8 @@ macro abstractbase(ex)
 		if @capture(line, x_String_string)
 			comment = x				#save comment to apply to next line. Note that we take a slight cheat by ignoring line number nodes. Unlike proper Julia, comments will apply even across blank lines.
 		else
-			#FIXME: move method declaration stuff to module __init__, so it will work with precompilation
+			#move method declaration stuff have been moved to module __init__, in order to work with precompilation
 			if isexpr(line, :function)
-				### the interface requires a method that is supertype of this to be defined --- EXCEPT that occurences of T can be replaced with a subtype of T --- with later world age than this.
-				# f = shadow.eval(line)		#evaluated in calling module without hygiene pass
-				# f = Base.eval(shadow, line)		#evaluated in calling module without hygiene pass
-				# m = last_method_def(f)
-				# parent_f = __module__.eval(:(function $(m.name) end))	#declare just the function in the original module. this allows us to store the correct func type in the signature. It will not create any methods in the parent module.
-				# m_sig = set_sig_functype(__module__, m.sig, typeof(parent_f))
-				# @debug "interface specified by $T: $(m_sig), age $(m.primary_world)"
-
-				# # duplicate fields will be detected by the implementing struct. duplicate methods are detected by us.
-				# if !all(p->p.sig != m_sig, DBM[identT])
-				# 	ret=reset_type() 	#clears everything we've seen so far about the type, so it isn't misused? how necessary is this?
-				# 	if ret !== nothing
-				# 		return ret
-				# 	end
-									
-				# 	errorstr = "duplicate method definition at $(__source__.file):$(__source__.line)"
-				# 	return :(throw(InterfaceError($errorstr)))
-				# end
 				if !@capture(line, (function funcname_(__) end) | (function funcname_(__)::__ end))
 					errorstr = "Cannot recognize $line as a valid prototype definition. They must look like `function funcname(...) end"
 					return :(throw(InterfaceError($errorstr)))					
@@ -311,12 +296,11 @@ function create_module__init__()::Expr
 	NOTE that we should specify standard library functions explicitly, so we don't inadvertently invoke functions defined locally in the init's module.
 	"
 	quote function __init__()
-		#TODO: add a test case that requires @postinit function to successfuly execute during precompilation. (previously it was skipping @postinits during precompilation)
-
 		Inherit.DB_MODULES[Base.fullname(@__MODULE__)] = @__MODULE__	#we couldn't store this in macro processing stage. Only runtime module objects can be stored.
 
 		modentry = Inherit.getmoduleentry(@__MODULE__)
-		# println("$(@__MODULE__) contains module entry $modentry")
+		@debug "$(@__MODULE__) contains module entry $modentry"
+
 		if Inherit.isprecompiling()	#Can't use eval when precompiling. Precompilation "closes" a package. If Pkg2 loads precompiled Pkg1, Pkg1.__init__() will fire, which fails when trying to eval into closed Pkg1.
 			@goto process_postinit 
 		end
@@ -445,13 +429,13 @@ function create_module__init__()::Expr
 		end		
 
 	@label process_postinit
+		@debug "processing $(length(modentry.postinit)) module inits..."
 		for f in modentry.postinit
 			f()
 		end
 	end end 	#end quote
 end
 
-#FIXME  @postinit seems broken after precompilation. needs test case.
 "
 Requires a single function definition expression.
 

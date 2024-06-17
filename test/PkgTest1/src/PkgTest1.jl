@@ -35,6 +35,12 @@ function cost(apple::Apple, unitprice::Float32)
 	unitprice * (apple.weight + apple.coresize) 
 end
 
+raninit::Bool = false
+@postinit function __myinit__()	#NOTE: this method gets run during precompilation and its results are baked into PkgTest1
+	@info("$(@__MODULE__) postinit executed")
+	global raninit = true
+end
+
 function run()
 	@info "Running PkgTest1 post init tests..."
 	@testset "basic field inheritance" begin 

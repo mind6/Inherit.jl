@@ -32,7 +32,10 @@ include("testmain.jl")
 	savedproj = dirname(Pkg.project().path)
 	# Pkg.offline(true)
 	Pkg.activate(joinpath(dirname(@__FILE__), "PkgTest1"))
-	using PkgTest1
+	using PkgTest1 		#cannot use @test_logs with this statement because it won't be at top level
+	modentry = Inherit.getmoduleentry(PkgTest1)
+	@test length(modentry.postinit) == 1	#this makes sure the system knows about postinit and will run it
+
 	PkgTest1.run()
 	PkgTest1.greet()
 

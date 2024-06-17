@@ -6,8 +6,6 @@
 	const postinit::Vector{Function} = Vector()
 end
 
-"This gives us a list of all modules that are actively using Inherit.jl, if we ever need it"
-const DB_FLAGS = Dict{Module, ModuleEntry}()
 GLOBAL_RL::RL = ThrowError
 
 "
@@ -27,27 +25,19 @@ Sets the level of reporting for the given module. Takes precedence over global r
 `SkipInitCheck`: Still creates `__init__()` function (which sets up datastructures that may be needed by other modules) but won't verfiy interfaces. Cannot be set if `__init__()` has already been created
 "
 function setreportlevel(mod::Module, rl::RL)
-	# if ME already has been created, we cannot change the between DisableInit and other states 
-	if haskey(DB_FLAGS, mod)
-		me = getmoduleentry(mod)
-		if (rl==SkipInitCheck) ⊻ (me.rl==SkipInitCheck)
-			throw(SettingsError("cannot change from current setting from $(me.rl) to $(rl)"))
-		else
-			me.rl = rl
-		end
+	me = getmoduleentry(mod)
+	# if init has already been created, we cannot change between DisableInit and other states 
+	if me.init_created && ((rl==SkipInitCheck) ⊻ (me.rl==SkipInitCheck))
+		throw(SettingsError("cannot change from current setting from $(me.rl) to $(rl)"))
 	else
-		me = getmoduleentry(mod)
 		me.rl = rl
 	end
+
 end
 
 function getmoduleentry(mod::Module)
-	if !haskey(DB_FLAGS, mod)
-		me = ModuleEntry()	#kw constructor slow?
-		me.rl = GLOBAL_RL
-		DB_FLAGS[mod] = me
-		me
-	else
-		DB_FLAGS[mod]
+	if !isdefined(mod, H_FLAGS)
+		setproperty!(mod, H_FLAGS, ModuleEntry(rl = Inherit.GLOBAL_RL))
 	end
+	getproperty(mod, H_FLAGS)
 end
