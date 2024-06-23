@@ -429,7 +429,7 @@ function create_module__init__()::Expr
 		end		
 
 	@label process_postinit
-		@debug "processing $(length(modentry.postinit)) module inits..."
+		@debug "processing $(Base.length(modentry.postinit)) module inits..."
 		for f in modentry.postinit
 			f()
 		end
