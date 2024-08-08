@@ -156,8 +156,3 @@ end
 # 	@show T
 # end
 
-@testset "not implemented" begin
-	struct T1 <: AbstractVector{Int} end
-	# @abstractbase struct T2 <: AbstractVector{Int} end
-	@test_throws ImplementError @implement struct T3{N} <: T1 end
-end

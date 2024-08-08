@@ -378,3 +378,15 @@ module M9fail
 		Inherit.setreportlevel(@__MODULE__, ShowMessage)
 	end
 end
+
+module M11
+	using Inherit, Test
+
+	struct T1 <: AbstractVector{Int} end
+	# @abstractbase struct T1 <: AbstractVector{Int} end
+
+	@testset "not implemented" begin
+		@test_throws "it was not declared with @abstractbase" @implement struct T3{P} <: T1 end
+	end
+
+end

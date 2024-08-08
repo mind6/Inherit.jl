@@ -47,6 +47,7 @@ TypeIdentifier = @NamedTuple{
 
 TypeSpec = @NamedTuple{
 	ismutable::Bool,			#whether or not the fields of this type are mutable
+	typeparams::Vector{Expr},  #expressions that define the type parameters, including those inherited from supertype
 	fields::Vector{Expr}		#expressions that define the type's fields (including those inherited from supertype)	
 }
 
@@ -114,7 +115,8 @@ function process_supertype(currentmod::Module, S::Union{Symbol, Expr})
 	end	
 	U_DBSPEC = getproperty(moduleS, H_TYPESPEC)		#either foreign or local DBSPEC
 	if !haskey(U_DBSPEC, nameS)
-		error("supertype $nameS not found in $moduleS -- It needs to have been declared with @abstractbase")
+		# error("supertype $nameS not found in $moduleS -- It needs to have been declared with @abstractbase")
+		return nothing, nothing, nothing
 	end
 	identS = TypeIdentifier((fullname(moduleS), nameS))
 	U_DBM = getproperty(moduleS, H_METHODS)
@@ -162,14 +164,22 @@ macro abstractbase(ex)
 
 	ex = longdef(ex)		#normalizes function definition to long form
 	local ismutable
-	T = S = nothing
+	T = S = P = nothing
 	if @capture(ex, struct T_Symbol<:S_ lines__ end)
 		ismutable = false
 	elseif @capture(ex, struct T_Symbol lines__ end)
 		ismutable = false
+	elseif @capture(ex, struct T_Symbol{P__} lines__ end)
+		ismutable = false
+	elseif @capture(ex, struct T_Symbol{P__}<:S_ lines__ end)
+		ismutable = false
 	elseif @capture(ex, mutable struct T_Symbol<:S_ lines__ end)
 		ismutable = true
 	elseif @capture(ex, mutable struct T_Symbol lines__ end)
+		ismutable = true
+	elseif @capture(ex, mutable struct T_Symbol{P__} lines__ end)
+		ismutable = true
+	elseif @capture(ex, mutable struct T_Symbol{P__}<:S_ lines__ end)
 		ismutable = true
 	else 
 		throw(InterfaceError("Cannot parse the following as a struct type:\n $ex"))
@@ -196,7 +206,9 @@ macro abstractbase(ex)
 	identT = TypeIdentifier((MOD,T))
 
 	function reset_type()
-		DBSPEC[T] = TypeSpec((ismutable, Vector{Expr}()))
+		DBSPEC[T] = TypeSpec((ismutable, 
+			P === nothing ? Vector{Expr}() : Vector{Expr}(P), # copy P into an Expr array, if P exists
+			Vector{Expr}()))
 		DBM[identT] = Vector{MethodDeclaration}()
 		DBS[identT] = Vector{Symbol}()
 		if S !== nothing		#copy fields and methods from the super type to the subtype 
@@ -211,6 +223,7 @@ macro abstractbase(ex)
 				return :(throw(InterfaceError($errorstr)))
 			end
 			#we bring over fields and method declarations from S and add it to T
+			append!(specT.typeparams, specS.typeparams)
 			append!(specT.fields, specS.fields)
 			append!(DBM[identT], U_DBM[identS]) #but the original `line` may still be referring to the original module
 		end
@@ -477,10 +490,15 @@ Method declarations may be from a __foreign module__, in which case method imple
 macro implement(ex)
 	setup_module_db(__module__)
 
+	T = P = nothing
 	local ismutable
 	if @capture(ex, struct T_Symbol<:S_ fields__ end)
 		ismutable = false
+	elseif @capture(ex, struct T_Symbol{P__}<:S_ fields__ end)
+		ismutable = false
 	elseif @capture(ex, mutable struct T_Symbol<:S_ fields__ end)
+		ismutable = true
+	elseif @capture(ex, mutable struct T_Symbol{P__}<:S_ fields__ end)
 		ismutable = true
 	else
 		errorstr = "Cannot parse the following as a struct subtype:\n $ex"
@@ -534,6 +552,14 @@ macro implement(ex)
 	# 	push!(DBS[ident], T)
 	# end
 
+	# add the type parameters if they exist
+	if !isempty(specS.typeparams) || P !== nothing
+		if P === nothing 
+			P = Vector{Expr}() 
+		end
+		append!(P, specS.typeparams)
+		ex.args[2].args[2] = Expr(:curly, T, P...)
+	end
 	# add the fields for the supertype to the front of list for derived type
 	prepend!(ex.args[3].args, specS.fields)	
 
