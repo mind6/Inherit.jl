@@ -108,6 +108,23 @@ end
 	@test !@capture(:(function cost end), function name_(__) end)
 	@test !@capture(:(function cost() nothing end), function name_(__) end)
 end
+
+@testset "replace_parameterized_type" begin
+	ex1 = quote
+		struct Apple <: Fruit
+		end
+	end
+	ex2 = quote
+		struct Apple{T} <: Fruit
+		end
+	end
+	
+	P = Inherit.SymbolOrExpr[:(T1 <: T2), :T3]
+	for ex in [ex1, ex2]
+		res = Inherit.replace_parameterized_type(ex, :Apple, P)
+		@test @capture(res, struct Apple{T1<:T2, T3} <: Fruit end)
+	end
+end
 # Inherit.reducetype(:(function f(::Vector{<:M1.Fruit}) end), (:Main, :M1), :Fruit, (:Main, :M2), :Orange)
 # @capture( :( f(x::Vector{<:Type{<:Fruit}}) ), f(P_:: A_{<: T_} ) ); @show P A T
 # @capture( :( f(x::M1.M1.Fruit) ), f(_::m__.T_ ) )

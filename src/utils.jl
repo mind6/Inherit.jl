@@ -292,6 +292,25 @@ function reducetype(expr::Expr, basemodule::NTuple{N, Symbol}, basetype::Symbol,
 	end, expr)
 end
 
+"""
+Given an expression that looks like `struct <typename> ... end` or `struct <typename>{...} ... end`, modify the expression into `struct S{<params[1]>, <params[2]>, ...} ... end` 
+
+Note that <typename> is only expected to be found in one of the positions above. We process only the first occurrence of <typename>. If the input expression is not of the expected form the expression returned may be gibberish syntatically. We accept this limitation for simplicity while traversing different types of struct definitions.
+"""
+function replace_parameterized_type(ex::Expr, typename::Symbol, params::Vector{SymbolOrExpr})
+	replaced = false
+	MacroTools.prewalk(x->begin
+		# global replaced
+		if !replaced && (@capture(x, T_Symbol) || @capture(x, T_Symbol{__}))
+			if T == typename
+				replaced = true
+				return Expr(:curly, T, params...)
+			end
+		end
+		x
+	end, ex)
+end
+
 function make_variable_tupletype(curmodule::Module, types::Type ...)
 	curmodule.eval(:(Tuple{$(types...)}))
 end

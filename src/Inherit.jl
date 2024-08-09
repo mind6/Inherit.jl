@@ -40,6 +40,8 @@ const H_FLAGS::Symbol = :__Inherit_jl_FLAGS
 
 const E_SUMMARY_LEVEL = "INHERIT_JL_SUMMARY_LEVEL"
 
+SymbolOrExpr = Union{Symbol, Expr}
+
 #super type identifier
 TypeIdentifier = @NamedTuple{
 	modulefullname::Tuple, 	#module where the supertype was originally defined
@@ -47,7 +49,7 @@ TypeIdentifier = @NamedTuple{
 
 TypeSpec = @NamedTuple{
 	ismutable::Bool,			#whether or not the fields of this type are mutable
-	typeparams::Vector{Expr},  #expressions that define the type parameters, including those inherited from supertype
+	typeparams::Vector{SymbolOrExpr},  #expressions that define the type parameters, including those inherited from supertype
 	fields::Vector{Expr}		#expressions that define the type's fields (including those inherited from supertype)	
 }
 
@@ -207,7 +209,7 @@ macro abstractbase(ex)
 
 	function reset_type()
 		DBSPEC[T] = TypeSpec((ismutable, 
-			P === nothing ? Vector{Expr}() : Vector{Expr}(P), # copy P into an Expr array, if P exists
+			Vector{SymbolOrExpr}(), #start with empty array, collect super class types first
 			Vector{Expr}()))
 		DBM[identT] = Vector{MethodDeclaration}()
 		DBS[identT] = Vector{Symbol}()
@@ -227,8 +229,11 @@ macro abstractbase(ex)
 			append!(specT.fields, specS.fields)
 			append!(DBM[identT], U_DBM[identS]) #but the original `line` may still be referring to the original module
 		end
+		if P !== nothing append!(DBSPEC[T].typeparams, P) end #add any type params from this struct after the supertype's params have been added
+
 		nothing
 	end
+
 	ret=reset_type()
 	if ret !== nothing
 		return ret
@@ -555,10 +560,13 @@ macro implement(ex)
 	# add the type parameters if they exist
 	if !isempty(specS.typeparams) || P !== nothing
 		if P === nothing 
-			P = Vector{Expr}() 
+			P = Vector{SymbolOrExpr}() 
+		else
+			P = Vector{SymbolOrExpr}(P)  #convert the type from Vector{Any} output by MacroTools, to emphasize what we're expecting.
 		end
-		append!(P, specS.typeparams)
-		ex.args[2].args[2] = Expr(:curly, T, P...)
+		prepend!(P, specS.typeparams)
+		# ex.args[2].args[2] = Expr(:curly, T, P...)
+		ex = replace_parameterized_type(ex, T, P)
 	end
 	# add the fields for the supertype to the front of list for derived type
 	prepend!(ex.args[3].args, specS.fields)	
