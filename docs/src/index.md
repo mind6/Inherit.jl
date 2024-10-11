@@ -217,6 +217,8 @@ end
 end
 
 function sugarlevel(apple::Apple) "depends on "*join(fieldnames(Apple),", ") end	
+
+sugarlevel(Apple(3.3, "sucrose", 4))
 ```
 ```
 "depends on weight, sugartype, coresize"
