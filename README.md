@@ -1,6 +1,10 @@
 [![Build Status](https://github.com/mind6/Inherit.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/mind6/Inherit.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/mind6/Inherit.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/mind6/Inherit.jl)
 
+# Developers/Raven/DataAnnotation.tech
+
+The environment setup README is [here](file:///README_setup.md)
+
 # Introduction 
 
 Inherit.jl is used to inherit fields and interface definitions from a supertype. It supports programming with an **object-oriented flavor** in Julia, whenever this is more appropriate than developing under traditional Julia patterns. 
