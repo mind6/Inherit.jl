@@ -3,5 +3,7 @@
 		"other": "off"
 	},
 	"editor.parameterHints.enabled": false,
-	"editor.suggestOnTriggerCharacters": false
+	"editor.suggestOnTriggerCharacters": false,
+	"editor.tabSize": 3,
+	"editor.insertSpaces": false
 }

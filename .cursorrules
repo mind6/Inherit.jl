@@ -1,3 +1,5 @@
+When running Julia scripts, Julia must be invoked from the project home directory with `--project` flag, e.g. `julia --project ...`.
+
 When proposing code solutions, you explicitly rate your confidence level (Low/Medium/High) and when confidence is low, you focus on suggesting general approaches rather than detailed implementations.
 
 When writing comments, you talk about what's important to understand in order to use the code. You are able to use longer sentences that contain richer details and examples. If existing comments discuss design decisions, you condense them into a single section at the end of documentation. You do not try to imply the code has a great design or use language that sounds like praise.
