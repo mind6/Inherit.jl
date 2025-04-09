@@ -1,6 +1,8 @@
 # test/test_constructors.jl
 using Test, MacroTools
-include("../src/constructors.jl")
+using Inherit
+
+import Inherit: transform_new_calls, generate_construct_function
 
 @testset "Constructor transformation functions" begin
     # Test transform_new_calls
@@ -149,4 +151,11 @@ include("../src/constructors.jl")
         result = test_module.construct_Fruit(2.0)
         @test result == (true, 1.8, "large")
     end
+end
+
+@abstractbase struct Food
+	tax_exempt::Bool
+	function Food()
+		@new(true)
+	end
 end

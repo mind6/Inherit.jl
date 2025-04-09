@@ -33,6 +33,8 @@ const H_TYPESPEC::Symbol = :__Inherit_jl_TYPESPEC
 const H_METHODS::Symbol = :__Inherit_jl_METHODS
 #module property name of the dict mapping type identifier to (nonqualified) subtype names
 const H_SUBTYPES::Symbol = :__Inherit_jl_SUBTYPES
+#module property name of the dict mapping type identifier to constructor definitions
+const H_CONSTRUCTOR_DEFINITIONS::Symbol = :__Inherit_jl_CONSTRUCTOR_DEFINITIONS
 #function names we auto imported, so we don't repeat warning messages
 const H_IMPORTED::Symbol = :__Inherit_jl_IMPORTED
 #module property name of ModuleEntry instance, which contains additional info about the module such as reporting and postinit
@@ -61,6 +63,15 @@ mutable struct MethodDeclaration
 	funcname::Symbol			#name of function. must be determined at type definition time. It cannot be extracted from sig because it may be empty until module __init__.
 	sig::Union{Nothing, Type{<:Tuple}}		#the original sig evaluated in original module
 end
+
+struct ConstructorDefinition 
+	defmodulename::Tuple 	#module where the declaration was originally defined. helps with line reduction
+	defbasename::Symbol		#base type name where the declaration was originally defined. helps with line reduction
+	original_expr::Expr
+	transformed_expr::Expr
+	linecomment::Union{Nothing, String, Expr}
+end
+
 struct InterfaceError <: Exception
 	msg::String
 end
@@ -81,6 +92,7 @@ const DB_MODULES = Dict{Tuple, Module}()	#points from fullname(mod) to the mod.
 
 include("reportlevel.jl")
 include("utils.jl")
+include("constructors.jl")
 
 function setup_module_db(mod::Module)
 	### only done once on first use of @abstractbase or @implement or @postinit in a module
@@ -91,6 +103,9 @@ function setup_module_db(mod::Module)
 		setproperty!(mod, H_METHODS, Dict{
 			TypeIdentifier, 								#abstract base type (local or foreign)
 			Vector{MethodDeclaration}}())				#list of method declarations required by the base type; this includes local as well as inherited definitions
+		setproperty!(mod, H_CONSTRUCTOR_DEFINITIONS, Dict{
+			TypeIdentifier, 								#abstract base type (local or foreign)
+			Vector{ConstructorDefinition}}())				#list of constructor definitions required by the base type; this includes local as well as inherited definitions
 		setproperty!(mod, H_SUBTYPES, Dict{
 			TypeIdentifier, 								#supertype (local or foreign) identifier
 			Vector{Symbol}}())							#local subtype name
@@ -199,6 +214,7 @@ macro abstractbase(ex)
 
 	DBSPEC = getproperty(__module__, H_TYPESPEC)
 	DBM = getproperty(__module__, H_METHODS)
+	DBCON = getproperty(__module__, H_CONSTRUCTOR_DEFINITIONS)
 	DBS = getproperty(__module__, H_SUBTYPES)
 
 	#a type definition completely overwrites previous definitions, method, fields, subtypes are all reset for the type.
@@ -212,6 +228,7 @@ macro abstractbase(ex)
 			Vector{SymbolOrExpr}(), #start with empty array, collect super class types first
 			Vector{Expr}()))
 		DBM[identT] = Vector{MethodDeclaration}()
+		DBCON[identT] = Vector{ConstructorDefinition}()
 		DBS[identT] = Vector{Symbol}()
 		if S !== nothing		#copy fields and methods from the super type to the subtype 
 			identS, U_DBSPEC, U_DBM = process_supertype(__module__, S)
@@ -247,15 +264,33 @@ macro abstractbase(ex)
 		else
 			#move method declaration stuff have been moved to module __init__, in order to work with precompilation
 			if isexpr(line, :function)
-				if !@capture(line, (function funcname_(__) end) | (function funcname_(__)::__ end))
-					errorstr = "Cannot recognize $line as a valid prototype definition. They must look like `function funcname(...) end"
+				if !@capture(line, (function funcname_(__) body__ end) | (function funcname_(__)::__ body__ end))
+					errorstr = "Cannot recognize $line as either a constructor or a valid prototype definition."
 					return :(throw(InterfaceError($errorstr)))					
 				end
-				__module__.eval(:(function $(funcname) end))	#declare just the function in the original module without any methods (which we'll then be unable to delete). This allows the function to be imported by other modules, so their method definitions can be placed correctly in the imported module.
+				# @show dump(MacroTools.striplines(body))
+				# Check if this is a constructor (function name matches type name)
+				is_constructor = funcname == T
+				body = MacroTools.striplines(body)
+				if is_constructor
+					# Transform constructor with @new calls
+					transformed_constructor = transform_new_calls(line)
+					construct_function = generate_construct_function(transformed_constructor)
+					
+					# Store the constructor prototype for later implementation
+					push!(DBCON[identT], ConstructorDefinition(MOD, T, line, construct_function, comment))
+				elseif body === nothing || isempty(body)
+					# Regular method declaration
+					__module__.eval(:(function $(funcname) end))	#declare just the function in the original module without any methods (which we'll then be unable to delete). This allows the function to be imported by other modules, so their method definitions can be placed correctly in the imported module.
+					
+					#NOTE: evaluating `@doc comment $(nameof(f))` here will only have a temporary effect. To persist documentation it must be done at the module __init__
+					push!(DBM[identT], MethodDeclaration(MOD, T, line, comment, funcname, nothing))
+				else
+					@show body
+					errorstr = "Cannot recognize $line as a valid prototype definition. It must look like `function funcname(...) end` without a body."
+						return :(throw(InterfaceError($errorstr)))					
+				end
 				
-				#NOTE: evaluating `@doc comment $(nameof(f))` here will only have a temporary effect. To persist documentation it must be done at the module __init__
-				# push!(DBM[identT], MethodDeclaration(MOD, T, line, comment, m_sig))
-				push!(DBM[identT], MethodDeclaration(MOD, T, line, comment, funcname, nothing))
 				comment = nothing
 				# Base.delete_method(m)   # `WARNING: method deletion during Module precompile may lead to undefined behavior` This warning shows up even when deleting in module __init__.
 
