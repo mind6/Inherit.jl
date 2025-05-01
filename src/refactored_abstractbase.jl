@@ -116,7 +116,7 @@ function define_abstract_type(module_ref, type_name, supertype)
 end
 
 """
-    initialize_type_metadata(current_module, type_name, ismutable, type_params)
+    initialize_type_metadata(current_module, type_name, ismutable)
 
 Initialize or reset the metadata for a type in the inheritance database.
 Returns the TypeIdentifier for the type.
@@ -125,7 +125,7 @@ Returns the TypeIdentifier for the type.
 - Creates or resets entries in the module's inheritance database for the type
 - Warns if overwriting a previous definition
 """
-function initialize_type_metadata(current_module, type_name, ismutable, type_params)
+function initialize_type_metadata(current_module, type_name, ismutable)
     module_fullname = fullname(current_module)
     
     # Get database references
@@ -145,17 +145,12 @@ function initialize_type_metadata(current_module, type_name, ismutable, type_par
     # Create initial empty metadata
     DBSPEC[type_name] = TypeSpec((
         ismutable,
-        Vector{SymbolOrExpr}(), # Start with empty array
-        Vector{Expr}()))
+        Vector{SymbolOrExpr}(), # Start with empty array for type params
+        Vector{Expr}()))        # Start with empty array for fields
         
     DBM[identT] = Vector{MethodDeclaration}()
     DBCON[identT] = Vector{ConstructorDefinition}()
     DBS[identT] = Vector{Symbol}()
-    
-    # Add type parameters if specified
-    if type_params !== nothing
-        append!(DBSPEC[type_name].typeparams, type_params)
-    end
     
     return identT
 end
@@ -196,7 +191,7 @@ function inherit_supertype_metadata(current_module, type_name, supertype)
         return :(throw(InterfaceError($errorstr)))
     end
     
-    # Inherit type parameters, fields, and method declarations
+    # Inherit type parameters (first) and fields
     append!(specT.typeparams, specS.typeparams)
     append!(specT.fields, specS.fields)
     
@@ -315,13 +310,33 @@ function process_type_body(current_module, type_name, lines)
             
             # Reset comment if it wasn't used
             if comment !== nothing
-                @warn "ignoring string expression: $comment"
+                # @warn "ignoring string expression: $comment"
                 comment = nothing
             end
         end
     end
     
     return nothing
+end
+
+"""
+    add_type_parameters(current_module, type_name, type_params)
+
+Add type parameters to a type's metadata after inheritance has been processed.
+
+# Side effects:
+- Appends type parameters to the type's parameter list in the database
+"""
+function add_type_parameters(current_module, type_name, type_params)
+    if type_params === nothing
+        return
+    end
+    
+    # Get database references
+    DBSPEC = getproperty(current_module, H_TYPESPEC)
+    
+    # Add the type parameters to the end of the list (after any inherited params)
+    append!(DBSPEC[type_name].typeparams, type_params)
 end
 
 # Main abstractbase macro implementation
@@ -335,8 +350,8 @@ macro abstractbase(ex)
     # 3. Define the abstract type in the module
     ret_expr = define_abstract_type(__module__, T, S)
     
-    # 4. Initialize type metadata in the database
-    initialize_type_metadata(__module__, T, ismutable, P)
+    # 4. Initialize type metadata in the database (without type parameters yet)
+    initialize_type_metadata(__module__, T, ismutable)
     
     # 5. Inherit from supertype if one exists
     ret = inherit_supertype_metadata(__module__, T, S)
@@ -344,12 +359,15 @@ macro abstractbase(ex)
         return ret
     end
     
-    # 6. Process the body of the type definition
+    # 6. Add our own type parameters AFTER inheriting from supertype
+    add_type_parameters(__module__, T, P)
+    
+    # 7. Process the body of the type definition
     ret = process_type_body(__module__, T, lines)
     if ret !== nothing
         return ret
     end
     
-    # 7. Return the abstract type expression (escaped for hygiene)
+    # 8. Return the abstract type expression (escaped for hygiene)
     esc(ret_expr)
 end
