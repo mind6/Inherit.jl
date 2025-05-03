@@ -257,7 +257,7 @@ macro abstractbase(ex)
 				# push!(DBM[identT], MethodDeclaration(MOD, T, line, comment, m_sig))
 				push!(DBM[identT], MethodDeclaration(MOD, T, line, comment, funcname, nothing))
 				comment = nothing
-				# Base.delete_method(m)   # `WARNING: method deletion during Module precompile may lead to undefined behavior` This warning shows up even when deleting in module __init__.
+				# Base.delete_method(m)	# `WARNING: method deletion during Module precompile may lead to undefined behavior` This warning shows up even when deleting in module __init__.
 
 				#NOTE: Julia 1.10 no longer allows deleting the function prototype during precompilation. (It's necessary to evaluate the prototype expression in the module in which it appears, in order to get the correct types for the function parameters.) Our solution is to leave prototype defined, but detect when its body is empty, indicating there isn't any user implementation of the prototype.
 			elseif isexpr(line, :(::), :const)
@@ -396,7 +396,7 @@ function create_module__init__()::Expr
 
 					@debug "$(identS.basename) requires $(decl.sig) for each subtype"
 					for subtype in SUBTYPES		# each subtype must satisfy each interface signature
-						# f = sig.parameters[1].instance   	#the function is still available even if all methods have been deleted
+						# f = sig.parameters[1].instance		#the function is still available even if all methods have been deleted
 						# mt = methods(f) 		
 						type_satisfied = false
 

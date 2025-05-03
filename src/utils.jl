@@ -204,7 +204,7 @@ function populatefunctionsignature!(decl::MethodDeclaration, defmodule::Module, 
 	#NOTE: evaluating `@doc comment $(nameof(f))` here will only have a temporary effect. To persist documentation it must be done at the module __init__
 	# push!(DBM[identT], MethodDeclaration(MOD, T, line, comment, m_sig))
 	# comment = nothing
-	Base.delete_method(m)   # `WARNING: method deletion during Module precompile may lead to undefined behavior` This warning shows up even when deleting in module __init__.
+	Base.delete_method(m)	# `WARNING: method deletion during Module precompile may lead to undefined behavior` This warning shows up even when deleting in module __init__.
 end
 
 "
