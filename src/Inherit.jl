@@ -92,7 +92,6 @@ const DB_MODULES = Dict{Tuple, Module}()	#points from fullname(mod) to the mod.
 
 include("reportlevel.jl")
 include("utils.jl")
-include("constructors.jl")
 
 function setup_module_db(mod::Module)
 	### only done once on first use of @abstractbase or @implement or @postinit in a module
