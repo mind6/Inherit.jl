@@ -1,20 +1,18 @@
 """
 Constructor inheritance
 
-Introduce two macros @new and @super. These help to define and invoke the super class constructor, respectively. 
+Introduce two special functions new(...) and super(...). These help to define and invoke the super class constructor, respectively. 
 
-These may only be used inside the @abstractbase or @implement macros. If used outside, the macros would have no information about the type it's trying to mangle.
+These may only be used inside the @abstractbase or @implement macros. If used outside, the special functions would have no information about the type it's operating on.
 """
 macro abstractbase(x) end
 macro implement(x) end
-macro new(x) end
-macro super(x) end
 ############## user code ##########
 
 @abstractbase struct Food
 	tax_exempt::Bool
 	function Food()
-		@new(true)
+		new(true)
 	end
 end
 
@@ -23,7 +21,7 @@ end
 	size::String
 	function Fruit(w)
 		# user_processing_A...
-		@new(@super(), w * 0.9, "large")
+		new(super(), w * 0.9, "large")
 	end
 end
 
@@ -31,11 +29,11 @@ end
 	coresize::Int 
 	function Apple()
 		# user_processing_B...
-		new(@super(1.0), 3)
+		new(super(1.0), 3)
 	end
 	function Apple(w)
 		# user_processing_C...
-		Apple(@super(w), 4)
+		Apple(super(w), 4)
 	end
 end
 

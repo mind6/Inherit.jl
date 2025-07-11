@@ -1,12 +1,12 @@
 #=
-These functions help to implement the @new and @super macros, as outlined in test/runnable_designs.jl.
+These functions help to implement the new() and super() special functions, as outlined in test/runnable_designs.jl.
 =#
 
-# Transform @new calls in constructors
+# Transform new calls in constructors
 function transform_new_calls(constructor_expr)
-    # Replace @new(args...) with (args...)
+    # Replace new(args...) with (args...)
     MacroTools.postwalk(constructor_expr) do x
-        if @capture(x, @new(args__))
+        if @capture(x, new(args__))
             return :(return ($(args...),))
         else
             return x
@@ -30,4 +30,30 @@ function generate_construct_function(constructor_expr)
     ftype = Expr(:(::), fargs, :Tuple)
     fdef = Expr(:function, ftype, func_body)
     return fdef
+end
+
+"""
+Transform super() calls in constructor bodies to calls to the superclass constructor.
+Replaces super() with construct_Supertype()... where Supertype is the superclass name.
+"""
+function transform_super_calls(expr, supertype_name)
+    if supertype_name === nothing
+        # If no supertype, leave super as is (may cause error later)
+        return expr
+    end
+    
+    MacroTools.postwalk(expr) do x
+        if @capture(x, super(args__))
+            construct_name = Symbol("construct_", supertype_name)
+            if isempty(args)
+                # super() -> construct_Supertype()...
+                :($construct_name()...)
+            else
+                # super(a, b) -> construct_Supertype(a, b)
+                :($construct_name($(args...)))
+            end
+        else
+            x
+        end
+    end
 end
