@@ -115,14 +115,14 @@ function setup_module_db(mod::Module)
 		initexp = create_module__init__()
 		# dump(initexp; maxdepth=16)
 		# println(initexp)
-		mod.eval(initexp)		#NOTE: do not do rmlines or this eval can have problems
+		Core.eval(mod, initexp)		#NOTE: do not do rmlines or this eval can have problems
 		me = getmoduleentry(mod)
 		me.init_created = true
 	end
 end
 
 function process_supertype(currentmod::Module, S::Union{Symbol, Expr})
-	objS = currentmod.eval(S)		
+	objS = Core.eval(currentmod, S)		
 	moduleS = objS.name.module
 	nameS = objS.name.name			
 	if !isdefined(moduleS, H_TYPESPEC)
@@ -150,7 +150,7 @@ function process_supertype(currentmod::Module, S::Union{Symbol, Expr})
 		if !isdefined(currentmod, funcname)
 			expr = to_import_expr(funcname, decl.defmodulename, currentfullname)
 			# currentmod.eval(:(export $funcname))	#NOTE: export must come before the symbol import, in order to work. I think we may not actually want this. Allow export lists to be explicit.
-			currentmod.eval(expr)
+			Core.eval(currentmod, expr)
 			push!(DBI, identF)
 			@debug "auto imported with `$expr`"
 		elseif identF ∉ DBI
@@ -272,7 +272,7 @@ function create_module__init__()::Expr
 					elseif decl.linecomment !== nothing 	#for local module, set the @doc for method declarations
 						@debug "documenting `$funcname` with `$(decl.linecomment)`"
 						expr = :(@doc $(decl.linecomment) $funcname)
-						(@__MODULE__).eval(expr)
+						Core.eval(@__MODULE__, expr)
 					end
 
 					### do not require method table if there are no subtypes
@@ -340,7 +340,7 @@ function create_module__init__()::Expr
 				@debug "skipping init check"
 			elseif $summarycall != nothing
 				summarystr = """Inherit.jl: processed $(join(LOCALMOD, '.')) with $(Inherit.singular_or_plural(n_supertypes, "supertype")) having $(Inherit.singular_or_plural(n_signatures, "method requirement")). $(Inherit.singular_or_plural(n_subtypes, "subtype was", "subtypes were")) checked with $(Inherit.singular_or_plural(n_errors, "missing method"))."""
-				(@__MODULE__).eval(Expr(:macrocall, $summarycall, LineNumberNode(@__LINE__, @__FILE__), summarystr))
+				Core.eval(@__MODULE__, Expr(:macrocall, $summarycall, LineNumberNode(@__LINE__, @__FILE__), summarystr))
 			end
 		else
 			@debug "I don't require any definitions"
@@ -374,7 +374,7 @@ macro postinit(ex)
 	if modentry.rl == SkipInitCheck
 		return :(throw(SettingsError("module is set to SkipInitCheck. @postinit requires ThrowError or ShowMessage setting.")))
 	else
-		push!(modentry.postinit, __module__.eval(ex))
+		push!(modentry.postinit, Core.eval(__module__, ex))
 		@debug "module entry $modentry added under $__module__"
 	end
 	nothing
@@ -487,7 +487,7 @@ end
 "opposite of @test_throws"
 macro test_nothrows(exp, args...)
 	try
-		__module__.eval(exp)
+		Core.eval(__module__, exp)
 		:(@test true $(args...))
 	catch e
 		showerror(stderr, e, catch_backtrace())

@@ -44,7 +44,7 @@ function setup_module_database(mod::Module)
         
         # Setup the module's __init__ function to perform verification
         initexp = create_module__init__()
-        mod.eval(initexp) # NOTE: do not use rmlines on this eval
+        Core.eval(mod, initexp) # NOTE: do not use rmlines on this eval
         
         # Mark that we've created the init function
         me = getmoduleentry(mod)
@@ -110,7 +110,7 @@ function define_abstract_type(module_ref, type_name, supertype)
     end
     
     # Evaluate the expression to make the type available
-    module_ref.eval(ret_expr)
+    Core.eval(module_ref, ret_expr)
     
     return ret_expr
 end
@@ -259,7 +259,7 @@ function process_method_declaration(current_module, type_name, ident, line, comm
         push!(DBCON[ident], ConstructorDefinition(module_fullname, type_name, line, construct_function, comment))
     elseif body === nothing || isempty(body)
         # Regular method declaration - just declare the function without methods
-        current_module.eval(:(function $(funcname) end))
+        Core.eval(current_module, :(function $(funcname) end))
         
         # Store method declaration in the database
         push!(DBM[ident], MethodDeclaration(module_fullname, type_name, line, comment, funcname, nothing))

@@ -181,7 +181,7 @@ end
 this is used by __init__ so we throw errror directly instead of returning a throw error exception.
 """
 function populatefunctionsignature!(decl::MethodDeclaration, defmodule::Module, T::Symbol, decls::Vector{MethodDeclaration})
-	f = defmodule.eval(decl.line)		#evaluated in calling module without hygiene pass
+	f = Core.eval(defmodule, decl.line)		#evaluated in calling module without hygiene pass
 	# f = Base.eval(shadow, line)		#evaluated in calling module without hygiene pass
 	m = last_method_def(f)
 	# parent_f = __module__.eval(:(function $(m.name) end))	#declare just the function in the original module. this allows us to store the correct func type in the signature. It will not create any methods in the parent module.
@@ -312,7 +312,7 @@ function replace_parameterized_type(ex::Expr, typename::Symbol, params::Vector{S
 end
 
 function make_variable_tupletype(curmodule::Module, types::Type ...)
-	curmodule.eval(:(Tuple{$(types...)}))
+	Core.eval(curmodule, :(Tuple{$(types...)}))
 end
 
 function set_sig_functype(curmodule::Module, sig::Type{<:Tuple}, functype::DataType)

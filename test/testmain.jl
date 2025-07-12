@@ -63,11 +63,11 @@ end
 
 #test that we can evaluate an expression in a shadow module, and get the signature as if it was evaluated in the parent module. This allows us to keep the parent module free of prototype functions, which can cause ambiguities.
 @testset "test createshadowmodule" begin
-	M1.eval(:(function testfunc(fruit::M1.Fruit, unitprice::Float32)::Float32 end))
+	Core.eval(M1, :(function testfunc(fruit::M1.Fruit, unitprice::Float32)::Float32 end))
 	m1functype = typeof(M1.testfunc)
 
 	Mshadow = Inherit.createshadowmodule(M1)
-	Base.eval(Mshadow, :(function testfunc(fruit::M1.Fruit, unitprice::Float32)::Float32 end))
+	Core.eval(Mshadow, :(function testfunc(fruit::M1.Fruit, unitprice::Float32)::Float32 end))
 
 	sig1 = Inherit.last_method_def(M1.testfunc).sig
 	sig2 = Inherit.last_method_def(Mshadow.testfunc).sig
