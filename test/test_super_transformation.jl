@@ -8,14 +8,13 @@ import Inherit: transform_super_calls, get_supertype_constructor_name
     # First, let's create a test module to explore the data structures
     test_module = Module()
 	 Core.eval(test_module,:(using Inherit))
-	 
+
     # Set up the module database
     Inherit.setup_module_db(test_module)
     
     @testset "Explore existing data structures" begin
         # Create a simple hierarchy in our test module
         Core.eval(test_module, quote
-            using Inherit
             
             Inherit.@abstractbase struct Food
                 tax_exempt::Bool
@@ -74,10 +73,8 @@ end
             super_calls = []
             MacroTools.postwalk(expr) do x
                 if @capture(x, super(args__))
-                    push!(super_calls, (args,))
-                elseif @capture(x, super())
-                    push!(super_calls, ())
-                end
+                    push!(super_calls, (args...,))
+					 end
                 x
             end
             return super_calls
@@ -127,11 +124,11 @@ end
     # Set up both modules
     Inherit.setup_module_db(base_module)
     Inherit.setup_module_db(derived_module)
-    
+	 Core.eval(base_module, :(using Inherit))
+	 Core.eval(derived_module, :(using Inherit))
+
     # Define base type in base_module
     Core.eval(base_module, quote
-        using Inherit
-        
         @abstractbase struct Food
             tax_exempt::Bool
             function Food()
@@ -142,8 +139,6 @@ end
     
     # Define derived type in derived_module that inherits from base_module.Food
     Core.eval(derived_module, quote
-        using Inherit
-        
         @abstractbase struct Fruit <: $(base_module).Food
             weight::Float64
             size::String
