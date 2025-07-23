@@ -25,7 +25,7 @@ module Inherit
 export @abstractbase, @implement, @interface, @postinit, @test_nothrows, InterfaceError, ImplementError, SettingsError, (<--), setglobalreportlevel, setreportlevel, ThrowError, ShowMessage, SkipInitCheck
 
 using MacroTools
-import Test:@test
+import Test: @test, record, get_testset, Fail
 
 #module property name of the dict mapping from abstract base type names to expressions for fields of the base type
 const H_TYPESPEC::Symbol = :__Inherit_jl_TYPESPEC
@@ -81,6 +81,7 @@ const DB_MODULES = Dict{Tuple, Module}()	#points from fullname(mod) to the mod.
 
 include("reportlevel.jl")
 include("utils.jl")
+include("publicutils.jl")
 
 function setup_module_db(mod::Module)
 	### only done once on first use of @abstractbase or @implement or @postinit in a module
@@ -582,17 +583,6 @@ Can recreate the struct parameterized by the interface, this allows dispatch onl
 "
 macro interface(ex)
 	esc(ex)
-end
-
-"opposite of @test_throws"
-macro test_nothrows(exp, args...)
-	try
-		__module__.eval(exp)
-		:(@test true $(args...))
-	catch e
-		showerror(stderr, e, catch_backtrace())
-		:(@test false $(args...))
-	end
 end
 
 function (<--)(a ,b)
