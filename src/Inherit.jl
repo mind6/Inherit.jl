@@ -22,10 +22,9 @@ A parametric type signature can be supertype of abstract type signature
 
 """
 module Inherit
-export @abstractbase, @implement, @interface, @postinit, @test_nothrows, InterfaceError, ImplementError, SettingsError, (<--), setglobalreportlevel, setreportlevel, ThrowError, ShowMessage, SkipInitCheck
+export @abstractbase, @implement, @interface, @postinit, @test_nothrows, isprecompiling, InterfaceError, ImplementError, SettingsError, (<--), setglobalreportlevel, setreportlevel, ThrowError, ShowMessage, SkipInitCheck
 
 using MacroTools
-import Test: @test, record, get_testset, Fail
 
 #module property name of the dict mapping from abstract base type names to expressions for fields of the base type
 const H_TYPESPEC::Symbol = :__Inherit_jl_TYPESPEC

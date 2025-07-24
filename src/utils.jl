@@ -333,5 +333,3 @@ function privatize_funcname(funcdef::Expr)::Expr
 		x
 	end, funcdef)
 end
-
-isprecompiling() = ccall(:jl_generating_output, Cint, ()) == 1
