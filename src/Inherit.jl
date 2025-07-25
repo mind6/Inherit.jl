@@ -22,9 +22,12 @@ A parametric type signature can be supertype of abstract type signature
 
 """
 module Inherit
-export @abstractbase, @implement, @interface, @postinit, @test_nothrows, isprecompiling, InterfaceError, ImplementError, SettingsError, (<--), setglobalreportlevel, setreportlevel, ThrowError, ShowMessage, SkipInitCheck
+export @abstractbase, @implement, @interface, @postinit, isprecompiling, InterfaceError, ImplementError, SettingsError, (<--), setglobalreportlevel, setreportlevel, ThrowError, ShowMessage, SkipInitCheck
 
 using MacroTools
+
+macro test_nothrows end
+export @test_nothrows
 
 __precompile__(true)
 

@@ -33,6 +33,7 @@ include("testparametricstructs.jl")
 	savedproj = dirname(Pkg.project().path)
 	# Pkg.offline(true)
 	Pkg.activate(joinpath(dirname(@__FILE__), "PkgTest1"))
+	Pkg.resolve()			#this updates manifest.toml so changes such as extensions are available
 	using PkgTest1 		#cannot use @test_logs with this statement because it won't be at top level
 	modentry = Inherit.getmoduleentry(PkgTest1)
 	@test length(modentry.postinit) == 1	#this makes sure the system knows about postinit and will run it
@@ -41,10 +42,12 @@ include("testparametricstructs.jl")
 	PkgTest1.greet()
 
 	Pkg.activate(joinpath(dirname(@__FILE__), "PkgTest2"))
+	Pkg.resolve()
 	using PkgTest2
 	PkgTest2.run()
 	
 	Pkg.activate(joinpath(dirname(@__FILE__), "PkgTest3"))
+	Pkg.resolve()
 	@test_throws "InterfaceError: method definition duplicates a previous definition:" using PkgTest3
 
 	Pkg.activate(savedproj)
