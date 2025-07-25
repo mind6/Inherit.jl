@@ -24,6 +24,7 @@ ENV[Inherit.E_SUMMARY_LEVEL] = "info"
 
 #TODO: error out when overwriting a previous defined module __init__. Note that this won't prevent the user from overwriting Inherit.jl's __init__, but it's still helpful in reducing errors.
 include("testutils.jl")
+include("testpublicutils.jl")
 include("testmain.jl")
 include("testparametricstructs.jl")
 

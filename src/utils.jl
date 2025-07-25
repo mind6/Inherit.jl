@@ -143,7 +143,6 @@ end
 # 	curmod
 # end
 
-# __precompile__(false)
 "
 Creates a new module that contains (i.e. imports) only the properties of `basemodule` which are Types and Modules (i.e. excluding any functions). You can evaluate method declarations in this module to get the signature, without modifying `basemodule` itself
 "
@@ -204,7 +203,7 @@ function populatefunctionsignature!(decl::MethodDeclaration, defmodule::Module, 
 	#NOTE: evaluating `@doc comment $(nameof(f))` here will only have a temporary effect. To persist documentation it must be done at the module __init__
 	# push!(DBM[identT], MethodDeclaration(MOD, T, line, comment, m_sig))
 	# comment = nothing
-	Base.delete_method(m)   # `WARNING: method deletion during Module precompile may lead to undefined behavior` This warning shows up even when deleting in module __init__.
+	Base.delete_method(m)	# `WARNING: method deletion during Module precompile may lead to undefined behavior` This warning shows up even when deleting in module __init__.
 end
 
 "
@@ -333,8 +332,6 @@ function privatize_funcname(funcdef::Expr)::Expr
 		x
 	end, funcdef)
 end
-
-isprecompiling() = ccall(:jl_generating_output, Cint, ()) == 1
 
 ################################################################################
 #=
