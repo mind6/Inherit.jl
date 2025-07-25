@@ -143,7 +143,6 @@ end
 # 	curmod
 # end
 
-# __precompile__(false)
 "
 Creates a new module that contains (i.e. imports) only the properties of `basemodule` which are Types and Modules (i.e. excluding any functions). You can evaluate method declarations in this module to get the signature, without modifying `basemodule` itself
 "

@@ -26,6 +26,8 @@ export @abstractbase, @implement, @interface, @postinit, @test_nothrows, ispreco
 
 using MacroTools
 
+__precompile__(true)
+
 #module property name of the dict mapping from abstract base type names to expressions for fields of the base type
 const H_TYPESPEC::Symbol = :__Inherit_jl_TYPESPEC
 #module property name of the dict mapping type identifier to method interfaces. Unlike DB_FIELDS, this one can contain interfaces defined in a foreign module.
