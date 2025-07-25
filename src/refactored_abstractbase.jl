@@ -1,56 +1,3 @@
-"""
-This file contains the refactored implementation of the @abstractbase macro
-from the Inherit.jl package, broken down into smaller, more manageable functions.
-"""
-
-"""
-	setup_module_database(mod::Module)
-
-Initialize the module-level data structures needed by the Inherit.jl package.
-This function must be called before any other functions that manipulate the module's
-inheritance database.
-
-# Side effects:
-- Creates module properties for inheritance tracking (H_TYPESPEC, H_METHODS, etc.)
-- Sets up module.__init__ to verify implementations when the module is loaded
-- This is idempotent - only initializes structures if they don't already exist
-"""
-function setup_module_database(mod::Module)
-	# Only initialize once
-	if !isdefined(mod, H_TYPESPEC)
-		# Initialize the data structures for tracking type specifications
-		setproperty!(mod, H_TYPESPEC, Dict{
-			Symbol, # abstract base type (local only)
-			TypeSpec}()) # flags and fields for this type
-		
-		# Initialize data structures for tracking method declarations
-		setproperty!(mod, H_METHODS, Dict{
-			TypeIdentifier, # abstract base type (local or foreign)
-			Vector{MethodDeclaration}}()) # list of required methods
-		
-		# Initialize data structures for tracking constructor definitions
-		setproperty!(mod, H_CONSTRUCTOR_DEFINITIONS, Dict{
-			TypeIdentifier, # abstract base type (local or foreign)
-			Vector{ConstructorDefinition}}()) # list of constructors
-		
-		# Initialize data structures for tracking subtypes
-		setproperty!(mod, H_SUBTYPES, Dict{
-			TypeIdentifier, # supertype identifier
-			Vector{Symbol}}()) # local subtype names
-		
-		# Initialize set for tracking auto-imported functions
-		setproperty!(mod, H_IMPORTED, Set{
-			TypeIdentifier}()) # (modulefullname,funcname) pairs
-		
-		# Setup the module's __init__ function to perform verification
-		initexp = create_module__init__()
-		Core.eval(mod, initexp) # NOTE: do not use rmlines on this eval
-		
-		# Mark that we've created the init function
-		me = getmoduleentry(mod)
-		me.init_created = true
-	end
-end
 
 """
 	parse_abstractbase_type(ex)
@@ -343,7 +290,7 @@ end
 # Main abstractbase macro implementation
 macro abstractbase(ex)
 	# 1. Initialize module database
-	setup_module_database(__module__)
+	setup_module_db(__module__)
 	
 	# 2. Parse the type definition
 	T, S, P, ismutable, lines = parse_abstractbase_type(ex)

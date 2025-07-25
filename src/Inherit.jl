@@ -98,29 +98,55 @@ include("reportlevel.jl")
 include("utils.jl")
 include("publicutils.jl")
 
-function setup_module_db(mod::Module)
-	### only done once on first use of @abstractbase or @implement or @postinit in a module
-	if !isdefined(mod, H_TYPESPEC)
-		setproperty!(mod, H_TYPESPEC, Dict{
-			Symbol, 											#abstract base type (local only)
-			TypeSpec}())									#flags and fields for this type
-		setproperty!(mod, H_METHODS, Dict{
-			TypeIdentifier, 								#abstract base type (local or foreign)
-			Vector{MethodDeclaration}}())				#list of method declarations required by the base type; this includes local as well as inherited definitions
-		setproperty!(mod, H_CONSTRUCTOR_DEFINITIONS, Dict{
-			TypeIdentifier, 								#abstract base type (local or foreign)
-			Vector{ConstructorDefinition}}())				#list of constructor definitions required by the base type; this includes local as well as inherited definitions
-		setproperty!(mod, H_SUBTYPES, Dict{
-			TypeIdentifier, 								#supertype (local or foreign) identifier
-			Vector{Symbol}}())							#local subtype name
-		setproperty!(mod, H_IMPORTED, Set{
-			TypeIdentifier}())							#(modulefullname,funcname) pairs that have been auto imported into the current module
+"""
+This file contains the refactored implementation of the @abstractbase macro
+from the Inherit.jl package, broken down into smaller, more manageable functions.
+"""
 
-		### setup the module init to check for implementations after module is fully loaded
+"""
+	setup_module_db(mod::Module)
+
+Initialize the module-level data structures needed by the Inherit.jl package.
+This function must be called before any other functions that manipulate the module's
+inheritance database.
+
+# Side effects:
+- Creates module properties for inheritance tracking (H_TYPESPEC, H_METHODS, etc.)
+- Sets up module.__init__ to verify implementations when the module is loaded
+- This is idempotent - only initializes structures if they don't already exist
+"""
+function setup_module_db(mod::Module)
+	# Only initialize once
+	if !isdefined(mod, H_TYPESPEC)
+		# Initialize the data structures for tracking type specifications
+		setproperty!(mod, H_TYPESPEC, Dict{
+			Symbol, # abstract base type (local only)
+			TypeSpec}()) # flags and fields for this type
+		
+		# Initialize data structures for tracking method declarations
+		setproperty!(mod, H_METHODS, Dict{
+			TypeIdentifier, # abstract base type (local or foreign)
+			Vector{MethodDeclaration}}()) # list of required methods
+		
+		# Initialize data structures for tracking constructor definitions
+		setproperty!(mod, H_CONSTRUCTOR_DEFINITIONS, Dict{
+			TypeIdentifier, # abstract base type (local or foreign)
+			Vector{ConstructorDefinition}}()) # list of constructors
+		
+		# Initialize data structures for tracking subtypes
+		setproperty!(mod, H_SUBTYPES, Dict{
+			TypeIdentifier, # supertype identifier
+			Vector{Symbol}}()) # local subtype names
+		
+		# Initialize set for tracking auto-imported functions
+		setproperty!(mod, H_IMPORTED, Set{
+			TypeIdentifier}()) # (modulefullname,funcname) pairs
+		
+		# Setup the module's __init__ function to perform verification
 		initexp = create_module__init__()
-		# dump(initexp; maxdepth=16)
-		# println(initexp)
-		Core.eval(mod, initexp)		#NOTE: do not do rmlines or this eval can have problems
+		Core.eval(mod, initexp) # NOTE: do not use rmlines on this eval
+		
+		# Mark that we've created the init function
 		me = getmoduleentry(mod)
 		me.init_created = true
 	end
@@ -494,10 +520,14 @@ function (<--)(a ,b)
 	false
 end
 
-function __init__()
-	# NOTE @debug won't work here. JULIA_DEBUG seting doesn't apply to module init?
-	# @warn "Inherit.jl loaded with $DB_FLAGS"
-	# atexit(() -> @warn "Inherit.jl UNLOADED with $DB_FLAGS")
+#=
+This should only ever execute when precompiling.
+
+We're trying to avoid __init__() because it's alway recompiled during loading.
+=#
+begin
+	@assert isprecompiling()
+	@info "Inherit.jl finished precompiling"
 end
 
 end # module Inherit
