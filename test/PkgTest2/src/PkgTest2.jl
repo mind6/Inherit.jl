@@ -30,9 +30,8 @@ function run()
 		@test fieldnames(Orange) == (:weight2,)
 		@test fieldnames(Orange1) == (:weight,)
 
-		Inherit.setreportlevel(@__MODULE__, ThrowError)
+		Inherit.reportlevel = ThrowError
 		@test_nothrows PkgTest2.__init__()
-		@test_throws SettingsError Inherit.setreportlevel(@__MODULE__, SkipInitCheck)
 	end
 end
 

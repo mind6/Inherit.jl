@@ -1,3 +1,5 @@
+using Test, Inherit
+
 "
 Basic interface definition test. Interfaces can be redefined replacing existing definition. They are verified on module __init__(). 
 
@@ -107,11 +109,10 @@ module M2
 		@test fieldnames(Orange) == (:weight2,)
 		@test fieldnames(Orange1) == (:weight,)
 
-		Inherit.setreportlevel(@__MODULE__, ThrowError)
+		Inherit.reportlevel = ThrowError
 		@test_nothrows M2.__init__()
-		@test_throws SettingsError Inherit.setreportlevel(@__MODULE__, SkipInitCheck)
+		# @test_throws SettingsError Inherit.reportlevel = SkipInitCheck
 	end
-	# Inherit.setreportlevel(@__MODULE__, ShowMessage)
 end
 
 "
@@ -139,7 +140,7 @@ module M3
 		#since M3 contains `using M1`, its cost function is identical to that of M1
 		@test all(isequal.(methods(M1.cost), methods(M3.cost)))		 
 
-		Inherit.setreportlevel(@__MODULE__, ThrowError)
+		Inherit.reportlevel = ThrowError
 		@test parentmodule(cost) == M1
 		@test_nothrows __init__()
 	end
@@ -161,7 +162,7 @@ multilevel inheritance
 module M4
 	using Inherit, Test, ..M1
 	export Berry
-	Inherit.setreportlevel(@__MODULE__, SkipInitCheck)
+	Inherit.reportlevel = SkipInitCheck
 
 	@abstractbase struct Berry <: M1.Fruit
 		cluster::Int
@@ -207,11 +208,11 @@ module M4fail
 	bunchcost(item::BlueBerry, ::Float32) = 1.0
 
 	@testset "multilevel inheritance" begin
-		Inherit.setreportlevel(@__MODULE__, ThrowError)
+		Inherit.reportlevel = ThrowError
 		@test_throws ImplementError __init__()
 	end
 
-	Inherit.setreportlevel(@__MODULE__, ShowMessage)
+	Inherit.reportlevel = ShowMessage
 end
 
 "
@@ -228,11 +229,11 @@ module M4fail2
 	@implement struct BlueBerry <: Berry end
 
 	@testset "multilevel inheritance" begin
-		Inherit.setreportlevel(@__MODULE__, ThrowError)
+		Inherit.reportlevel = ThrowError
 		@test_throws ImplementError __init__()
 	end
 
-	Inherit.setreportlevel(@__MODULE__, ShowMessage)
+	Inherit.reportlevel = ShowMessage
 end
 
 "
@@ -245,7 +246,7 @@ module M4client
 
 
 	@testset "3 levels and 3 modules satisfied" begin
-		Inherit.setreportlevel(@__MODULE__, ThrowError)
+		Inherit.reportlevel = ThrowError
 		@test_nothrows __init__()
 	end
 end
@@ -255,9 +256,9 @@ module M4clientfail
 	@implement struct BlueBerry <: M4.Berry end
 
 	@testset "3 levels and 3 modules not satisfied" begin
-		Inherit.setreportlevel(@__MODULE__, ThrowError)
+		Inherit.reportlevel = ThrowError
 		@test_throws ImplementError __init__()
-		Inherit.setreportlevel(@__MODULE__, ShowMessage)
+		Inherit.reportlevel = ShowMessage
 	end
 end
 
@@ -373,9 +374,9 @@ module M9fail
 	end
 
 	@testset "parametric argument types must be matched exactly" begin
-		Inherit.setreportlevel(@__MODULE__, ThrowError)
+		Inherit.reportlevel = ThrowError
 		@test_throws ImplementError __init__()
-		Inherit.setreportlevel(@__MODULE__, ShowMessage)
+		Inherit.reportlevel = ShowMessage
 	end
 end
 

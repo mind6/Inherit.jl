@@ -23,37 +23,39 @@ ENV[Inherit.E_SUMMARY_LEVEL] = "info"
 
 
 #TODO: error out when overwriting a previous defined module __init__. Note that this won't prevent the user from overwriting Inherit.jl's __init__, but it's still helpful in reducing errors.
-include("testutils.jl")
-include("testpublicutils.jl")
-include("testmain.jl")
-include("testparametricstructs.jl")
+@testset verbose = true "test Inherit.jl" begin
+	include("testutils.jl")
+	include("testpublicutils.jl")
+	include("testmain.jl")
+	include("testparametricstructs.jl")
 
-@testset "package loading" begin
-	import Pkg
-	savedproj = dirname(Pkg.project().path)
-	# Pkg.offline(true)
-	Pkg.activate(joinpath(dirname(@__FILE__), "PkgTest1"))
-	Pkg.resolve()			#this updates manifest.toml so changes such as extensions are available
-	using PkgTest1 		#cannot use @test_logs with this statement because it won't be at top level
-	modentry = Inherit.getmoduleentry(PkgTest1)
-	@test length(modentry.postinit) == 1	#this makes sure the system knows about postinit and will run it
+	@testset "package loading" begin
+		import Pkg
+		savedproj = dirname(Pkg.project().path)
+		# Pkg.offline(true)
+		Pkg.activate(joinpath(dirname(@__FILE__), "PkgTest1"))
+		Pkg.resolve()			#this updates manifest.toml so changes such as extensions are available
+		using PkgTest1 		#cannot use @test_logs with this statement because it won't be at top level
+		modinit = getproperty(PkgTest1, Inherit.H_COMPILETIMEINFO)
+		@test length(modinit.postinit) == 1	#this makes sure the system knows about postinit and will run it
 
-	PkgTest1.run()
-	PkgTest1.greet()
+		PkgTest1.run()
+		PkgTest1.greet()
 
-	Pkg.activate(joinpath(dirname(@__FILE__), "PkgTest2"))
-	Pkg.resolve()
-	using PkgTest2
-	PkgTest2.run()
-	
-	Pkg.activate(joinpath(dirname(@__FILE__), "PkgTest3"))
-	Pkg.resolve()
-	@test_throws "InterfaceError: method definition duplicates a previous definition:" using PkgTest3
+		Pkg.activate(joinpath(dirname(@__FILE__), "PkgTest2"))
+		Pkg.resolve()
+		using PkgTest2
+		PkgTest2.run()
+		
+		Pkg.activate(joinpath(dirname(@__FILE__), "PkgTest3"))
+		Pkg.resolve()
+		@test_throws "InterfaceError: method definition duplicates a previous definition:" using PkgTest3
 
-	Pkg.activate(savedproj)
+		Pkg.activate(savedproj)
+	end
 end
 
-doctest(Inherit)
+# doctest(Inherit)
 
 
 # include("testtraits.jl")

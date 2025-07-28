@@ -72,17 +72,12 @@ Returns the TypeIdentifier for the type.
 - Creates or resets entries in the module's inheritance database for the type
 - Warns if overwriting a previous definition
 """
-function initialize_type_metadata(current_module, type_name, ismutable)
+function initialize_type_metadata(current_module::Module, type_name::Symbol, ismutable::Bool)
 	module_fullname = fullname(current_module)
-	
-	# Get database references
-	DBSPEC = getproperty(current_module, H_TYPESPEC)
-	DBM = getproperty(current_module, H_METHODS)
-	DBCON = getproperty(current_module, H_CONSTRUCTOR_DEFINITIONS)
-	DBS = getproperty(current_module, H_SUBTYPES)
-	
+	modinfo = getproperty(current_module, H_COMPILETIMEINFO)
+
 	# Warn if overwriting
-	if type_name ∈ keys(DBSPEC)
+	if type_name ∈ keys(modinfo.localtypespec)
 		@warn "overwriting previous definition of $type_name in $current_module"
 	end
 	
@@ -90,14 +85,14 @@ function initialize_type_metadata(current_module, type_name, ismutable)
 	identT = TypeIdentifier((module_fullname, type_name))
 	
 	# Create initial empty metadata
-	DBSPEC[type_name] = TypeSpec((
+	modinfo.localtypespec[type_name] = TypeSpec((
 		ismutable,
 		Vector{SymbolOrExpr}(), # Start with empty array for type params
 		Vector{Expr}()))        # Start with empty array for fields
 		
-	DBM[identT] = Vector{MethodDeclaration}()
-	DBCON[identT] = Vector{ConstructorDefinition}()
-	DBS[identT] = Vector{Symbol}()
+	modinfo.methods[identT] = Vector{MethodDeclaration}()
+	modinfo.constructor_definitions[identT] = Vector{ConstructorDefinition}()
+	modinfo.subtypes[identT] = Vector{Symbol}()
 	
 	return identT
 end
@@ -113,26 +108,23 @@ Returns an error expression if there's an issue with inheritance.
 - Updates method database with inherited method declarations
 - Imports functions from foreign modules if needed
 """
-function inherit_supertype_metadata(current_module, type_name, supertype)
+function inherit_supertype_metadata(current_module::Module, type_name::Symbol, supertype::Union{Nothing,Symbol, Expr})::Union{Nothing, Expr}
 	if supertype === nothing
 		return nothing
 	end
 	
 	# Process the supertype to get its metadata
-	identS, U_DBSPEC, U_DBM = process_supertype(current_module, supertype)
+	identS, modinfoS = process_supertype(current_module, supertype)
 	
 	if identS === nothing
 		# Not an @abstractbase, nothing to inherit
 		return nothing
 	end
-	
-	# Get database references
-	DBSPEC = getproperty(current_module, H_TYPESPEC)
-	DBM = getproperty(current_module, H_METHODS)
+	modinfoT = getproperty(current_module, H_COMPILETIMEINFO)
 	
 	# Check mutability compatibility
-	specS = U_DBSPEC[identS.basename]
-	specT = DBSPEC[type_name]
+	specS = modinfoS.localtypespec[identS.basename]
+	specT = modinfoT.localtypespec[type_name]
 	if specT.ismutable != specS.ismutable
 		errorstr = "mutability of $supertype is $(specS.ismutable) but that of $type_name is $(specT.ismutable)"
 		return :(throw(InterfaceError($errorstr)))
@@ -146,7 +138,7 @@ function inherit_supertype_metadata(current_module, type_name, supertype)
 	identT = TypeIdentifier((fullname(current_module), type_name))
 	
 	# Inherit method declarations
-	append!(DBM[identT], U_DBM[identS])
+	append!(modinfoT.methods[identT], modinfoS.methods[identS])
 	
 	return nothing
 end
@@ -192,9 +184,7 @@ function process_method_declaration(current_module, type_name, ident, line, comm
 	# Check if this is a constructor (function name matches type name)
 	is_constructor = funcname == type_name
 	
-	# Get database references
-	DBM = getproperty(current_module, H_METHODS)
-	DBCON = getproperty(current_module, H_CONSTRUCTOR_DEFINITIONS)
+	modinfo = getproperty(current_module, H_COMPILETIMEINFO)
 	module_fullname = fullname(current_module)
 	
 	if is_constructor
@@ -204,13 +194,13 @@ function process_method_declaration(current_module, type_name, ident, line, comm
 		construct_function = generate_construct_function(transformed_constructor)
 		
 		# Store the constructor prototype for later implementation
-		push!(DBCON[ident], ConstructorDefinition(module_fullname, type_name, line, construct_function, comment))
+		push!(modinfo.constructor_definitions[ident], ConstructorDefinition(module_fullname, type_name, line, construct_function, comment))
 	elseif body === nothing || isempty(body)
 		# Regular method declaration - just declare the function without methods
 		Core.eval(current_module, :(function $(funcname) end))
 		
 		# Store method declaration in the database
-		push!(DBM[ident], MethodDeclaration(module_fullname, type_name, line, comment, funcname, nothing))
+		push!(modinfo.methods[ident], MethodDeclaration(module_fullname, type_name, line, comment, funcname, nothing))
 	else
 		errorstr = "Cannot recognize $line as a valid prototype definition. It must look like `function funcname(...) end` without a body."
 		return :(throw(InterfaceError($errorstr)))
@@ -235,8 +225,7 @@ function process_type_body(current_module, type_name, lines)
 	module_fullname = fullname(current_module)
 	identT = TypeIdentifier((module_fullname, type_name))
 	
-	# Get database reference
-	DBSPEC = getproperty(current_module, H_TYPESPEC)
+	modinfo = getproperty(current_module, H_COMPILETIMEINFO)
 	
 	# Process each line in the type definition
 	comment = nothing
@@ -253,7 +242,7 @@ function process_type_body(current_module, type_name, lines)
 				end
 			else
 				# Process field definition
-				process_field_definition(DBSPEC[type_name], line)
+				process_field_definition(modinfo.localtypespec[type_name], line)
 			end
 			
 			# Reset comment if it wasn't used
@@ -280,11 +269,10 @@ function add_type_parameters(current_module, type_name, type_params)
 		return
 	end
 	
-	# Get database references
-	DBSPEC = getproperty(current_module, H_TYPESPEC)
+	modinfo = getproperty(current_module, H_COMPILETIMEINFO)
 	
 	# Add the type parameters to the end of the list (after any inherited params)
-	append!(DBSPEC[type_name].typeparams, type_params)
+	append!(modinfo.localtypespec[type_name].typeparams, type_params)
 end
 
 # Main abstractbase macro implementation

@@ -31,18 +31,6 @@ export @test_nothrows
 
 __precompile__(true)
 
-#module property name of the dict mapping from abstract base type names to expressions for fields of the base type
-const H_TYPESPEC::Symbol = :__Inherit_jl_TYPESPEC
-#module property name of the dict mapping type identifier to method interfaces. Unlike DB_FIELDS, this one can contain interfaces defined in a foreign module.
-const H_METHODS::Symbol = :__Inherit_jl_METHODS
-#module property name of the dict mapping type identifier to (nonqualified) subtype names
-const H_SUBTYPES::Symbol = :__Inherit_jl_SUBTYPES
-#module property name of the dict mapping type identifier to constructor definitions
-const H_CONSTRUCTOR_DEFINITIONS::Symbol = :__Inherit_jl_CONSTRUCTOR_DEFINITIONS
-#function names we auto imported, so we don't repeat warning messages
-const H_IMPORTED::Symbol = :__Inherit_jl_IMPORTED
-#module property name of ModuleEntry instance, which contains additional info about the module such as reporting and postinit
-const H_FLAGS::Symbol = :__Inherit_jl_FLAGS
 
 const E_SUMMARY_LEVEL = "INHERIT_JL_SUMMARY_LEVEL"
 
@@ -91,17 +79,45 @@ function Base.show(io::IO, x::Union{InterfaceError, ImplementError, SettingsErro
 	print(io, x.msg)
 end
 
-#NOTE: this map lives in Inherit. If a user module modifies this map during precompilation, this modification cannot be baked into Inherit (since it has already been precompiled), nor can the modification be baked into its own image (since the map doesn't live with the user module). Therefore the only place where you should use write to (and read from) this map is during module __init__. This is fine because we only use it to find information about dependencies of a module, which have been previously loaded and have populated this map with their own information. 
-const DB_MODULES = Dict{Tuple, Module}()	#points from fullname(mod) to the mod. 
+@enum ReportLevel ThrowError ShowMessage SkipInitCheck
 
-include("reportlevel.jl")
+"""
+There is one instance for each module which uses Inherit.jl. It is built up when @abstractbase and @implement macros execute at compile time. 
+
+It must contain strings and expressions that describe the types, but not runtime instances themselves. It may contain compile time state and evaluated function objects. These function objects can be called during module __init__, as per PkgTest4.jl
+"""
+@kwdef struct CompiletimeModuleInfo
+	# abstract base type (defined in local module only) => flags and fields for this type
+	localtypespec::Dict{Symbol, TypeSpec} = Dict{Symbol, TypeSpec}()
+
+	# abstract base type (local or foreign) => list of required methods
+	methods::Dict{TypeIdentifier, Vector{MethodDeclaration}} = Dict{TypeIdentifier, Vector{MethodDeclaration}}()
+
+	# abstract base type (local or foreign) => list of constructor definitions
+	constructor_definitions::Dict{TypeIdentifier, Vector{ConstructorDefinition}} = Dict{TypeIdentifier, Vector{ConstructorDefinition}}()
+
+	# abstract base type (local or foreign) => list of local subtypes
+	subtypes::Dict{TypeIdentifier, Vector{Symbol}} = Dict{TypeIdentifier, Vector{Symbol}}()
+
+	# (modulefullname,funcname) pairs that have been auto imported
+	imported::Set{TypeIdentifier} = Set{TypeIdentifier}()
+
+	# user functions to be called at the end of __init__ (after Inherit.jl completes self registration)
+	postinit::Vector{Function} = Vector()
+
+	# whether or not __init__ has been created
+	init_created::Bool = false
+end
+
+const H_COMPILETIMEINFO::Symbol = :__Inherit_jl_COMPILETIMEINFO
+
+#NOTE: this is a runtime map where user modules self-register with Inherit.jl (both when isprecompiling() is false and when it is true).
+const FULLNAME_TO_MODULE = Dict{Tuple, Module}()	#points from fullname(mod) to the mod. 
+
+global reportlevel::ReportLevel = ThrowError
+
 include("utils.jl")
 include("publicutils.jl")
-
-"""
-This file contains the refactored implementation of the @abstractbase macro
-from the Inherit.jl package, broken down into smaller, more manageable functions.
-"""
 
 """
 	setup_module_db(mod::Module)
@@ -111,68 +127,47 @@ This function must be called before any other functions that manipulate the modu
 inheritance database.
 
 # Side effects:
-- Creates module properties for inheritance tracking (H_TYPESPEC, H_METHODS, etc.)
+- Creates CompiletimeModuleInfo instance for the module
 - Sets up module.__init__ to verify implementations when the module is loaded
 - This is idempotent - only initializes structures if they don't already exist
 """
 function setup_module_db(mod::Module)
-	# Only initialize once
-	if !isdefined(mod, H_TYPESPEC)
-		# Initialize the data structures for tracking type specifications
-		setproperty!(mod, H_TYPESPEC, Dict{
-			Symbol, # abstract base type (local only)
-			TypeSpec}()) # flags and fields for this type
-		
-		# Initialize data structures for tracking method declarations
-		setproperty!(mod, H_METHODS, Dict{
-			TypeIdentifier, # abstract base type (local or foreign)
-			Vector{MethodDeclaration}}()) # list of required methods
-		
-		# Initialize data structures for tracking constructor definitions
-		setproperty!(mod, H_CONSTRUCTOR_DEFINITIONS, Dict{
-			TypeIdentifier, # abstract base type (local or foreign)
-			Vector{ConstructorDefinition}}()) # list of constructors
-		
-		# Initialize data structures for tracking subtypes
-		setproperty!(mod, H_SUBTYPES, Dict{
-			TypeIdentifier, # supertype identifier
-			Vector{Symbol}}()) # local subtype names
-		
-		# Initialize set for tracking auto-imported functions
-		setproperty!(mod, H_IMPORTED, Set{
-			TypeIdentifier}()) # (modulefullname,funcname) pairs
-		
-		# Setup the module's __init__ function to perform verification
+	if !isdefined(mod, H_COMPILETIMEINFO)
+		Core.eval(mod, quote
+			global $H_COMPILETIMEINFO = Inherit.CompiletimeModuleInfo()
+		end)
+
 		initexp = create_module__init__()
-		Core.eval(mod, initexp) # NOTE: do not use rmlines on this eval
-		
-		# Mark that we've created the init function
-		me = getmoduleentry(mod)
-		me.init_created = true
+		Core.eval(mod, initexp) # NOTE: do not use rmlines on this eval	end
 	end
 end
 
-function process_supertype(currentmod::Module, S::Union{Symbol, Expr})
+"""
+Resolves a supertype expression into a TypeIdentifier and CompiletimeModuleInfo of the supertype's module.
+
+If the supertype is not an @abstractbase, returns (nothing, modinfo).
+
+If the supertype is defined in a foreign module, the CompiletimeModuleInfo will contain the foreign module's CompiletimeModuleInfo.
+"""
+function process_supertype(currentmod::Module, S::Union{Symbol, Expr})::Tuple{Union{Nothing, TypeIdentifier}, Union{Nothing, CompiletimeModuleInfo}}
 	objS = Core.eval(currentmod, S)		
-	moduleS = objS.name.module
+	moduleS = objS.name.module		#whichever module the supertype was defined in
 	nameS = objS.name.name			
-	if !isdefined(moduleS, H_TYPESPEC)
-		@debug "Subtyping from $moduleS.$nameS but it is not an @abstractbase."
-		return nothing, nothing, nothing
-	end	
-	U_DBSPEC = getproperty(moduleS, H_TYPESPEC)		#either foreign or local DBSPEC
-	if !haskey(U_DBSPEC, nameS)
-		# error("supertype $nameS not found in $moduleS -- It needs to have been declared with @abstractbase")
-		return nothing, nothing, nothing
-	end
 	identS = TypeIdentifier((fullname(moduleS), nameS))
-	U_DBM = getproperty(moduleS, H_METHODS)
-	@assert haskey(U_DBM, identS)
+
+	if !isdefined(moduleS, :__Inherit_jl_COMPILETIMEINFO)
+		@debug "Subtyping from $moduleS.$nameS, but $moduleS is has no compile time info."
+		return nothing, nothing
+	end	
+	modinfo = getproperty(moduleS, H_COMPILETIMEINFO)	#this modinfo of the supertype's module; it can be the currentmod or a foreign module
+	if !haskey(modinfo.localtypespec, nameS)
+		@debug "supertype $nameS not found in $moduleS -- It needs to have been declared with @abstractbase"
+		return nothing, modinfo
+	end
 	
 	### import all the foreign function declarations into the current module. Any methods we define will live with the foreign module's functions; they not not create our own function.
-	DBI = getproperty(currentmod, H_IMPORTED)
 	currentfullname = fullname(currentmod)
-	for decl in U_DBM[identS]
+	for decl in modinfo.methods[identS]
 		if decl.defmodulename == currentfullname continue end	#no need to import
 
 		funcname = getfuncname(decl)
@@ -182,14 +177,14 @@ function process_supertype(currentmod::Module, S::Union{Symbol, Expr})
 			expr = to_import_expr(funcname, decl.defmodulename, currentfullname)
 			# currentmod.eval(:(export $funcname))	#NOTE: export must come before the symbol import, in order to work. I think we may not actually want this. Allow export lists to be explicit.
 			Core.eval(currentmod, expr)
-			push!(DBI, identF)
+			push!(modinfo.imported, identF)
 			@debug "auto imported with `$expr`"
-		elseif identF ∉ DBI
+		elseif identF ∉ modinfo.imported
 			@warn "$(nameof(currentmod)) already has a symbol `$funcname`. To implement $(decl.line) you should write the function name as `$(tostring(decl.defmodulename, funcname))`"
 		end
 	end
 	
-	identS, U_DBSPEC, U_DBM
+	identS, modinfo
 end
 
 "
@@ -233,10 +228,8 @@ function create_module__init__()::Expr
 			summarycall = nothing
 		end
 	end
-	
-	qnodeM = QuoteNode(H_METHODS)
-	qnodeS = QuoteNode(H_SUBTYPES)
 
+	modinfo_node = QuoteNode(H_COMPILETIMEINFO)
 	"
 	In the user module's init, we need to throw exceptions directly, since there's no eval on the return value.
 
@@ -245,10 +238,13 @@ function create_module__init__()::Expr
 	NOTE that we should specify standard library functions explicitly, so we don't inadvertently invoke functions defined locally in the init's module.
 	"
 	quote function __init__()
-		Inherit.DB_MODULES[Base.fullname(@__MODULE__)] = @__MODULE__	#we couldn't store this in macro processing stage. Only runtime module objects can be stored.
-
-		modentry = Inherit.getmoduleentry(@__MODULE__)
-		@debug "$(@__MODULE__) contains module entry $modentry"
+		Inherit.FULLNAME_TO_MODULE[Base.fullname(@__MODULE__)] = @__MODULE__	#we couldn't store this in macro processing stage. Only runtime module objects can be stored.
+		if !isdefined(@__MODULE__, $modinfo_node)
+			@debug "I don't require any definitions"
+			return
+		end
+		modinfo = getproperty(@__MODULE__, $modinfo_node)
+		@debug "$(@__MODULE__) contains module entry $modinfo"
 
 		if Inherit.isprecompiling()	#Can't use eval when precompiling. Precompilation "closes" a package. If Pkg2 loads precompiled Pkg1, Pkg1.__init__() will fire, which fails when trying to eval into closed Pkg1.
 			@goto process_postinit 
@@ -258,128 +254,122 @@ function create_module__init__()::Expr
 
 		function handle_error(errorstr::String)
 			n_errors += 1
-			if modentry.rl == Inherit.ThrowError
+			if Inherit.reportlevel == Inherit.ThrowError
 				throw(ImplementError(errorstr))
 			else
-				@assert modentry.rl == Inherit.ShowMessage
+				@assert Inherit.reportlevel == Inherit.ShowMessage
 				@error errorstr
 			end
 		end
 
-		if isdefined(@__MODULE__, $qnodeM)
-			DBM = Base.getproperty(@__MODULE__, $qnodeM)
-			DBS = Base.getproperty(@__MODULE__, $qnodeS)
-			LOCALMOD = Base.fullname(@__MODULE__)
-			LM_HANDLE  = Symbol(:__Inherit_jl_, LOCALMOD[end])
-			for (identS, decls) ∈ DBM
-				n_supertypes += 1
-				# __supertypemod__ = Inherit.getmodule(identS.modulefullname)
-				# isforeign = __supertypemod__ != @__MODULE__
-				# if isforeign	#skips installing a handle if local module, so we don't litter a module with handles unnecessarily.
-				# 	setproperty!(__supertypemod__, LM_HANDLE, @__MODULE__)
-				# end
-				SUBTYPES = DBS[identS]
-				n_subtypes += Base.length(SUBTYPES)
-				n_signatures += Base.length(decls)
+		LOCALMOD = Base.fullname(@__MODULE__)
+		LM_HANDLE  = Symbol(:__Inherit_jl_, LOCALMOD[end])
+		for (identS, decls) ∈ modinfo.methods
+			n_supertypes += 1
+			# __supertypemod__ = Inherit.getmodule(identS.modulefullname)
+			# isforeign = __supertypemod__ != @__MODULE__
+			# if isforeign	#skips installing a handle if local module, so we don't litter a module with handles unnecessarily.
+			# 	setproperty!(__supertypemod__, LM_HANDLE, @__MODULE__)
+			# end
+			SUBTYPES = modinfo.subtypes[identS]
+			n_subtypes += Base.length(SUBTYPES)
+			n_signatures += Base.length(decls)
 
-				### even with no subtypes, we need to go through decls to document interfaces
-				@debug "Inherit.jl requires interface definitions defined in base type $(Inherit.tostring(identS)) to be satisfied"
-				for decl in decls							# required method declarations
-					__defmodule__ = Inherit.DB_MODULES[decl.defmodulename]
-					if decl.sig === nothing
-						ret = Inherit.populatefunctionsignature!(decl, __defmodule__, identS.basename,  decls)
-						@assert decl.sig !== nothing
-					end
-					if modentry.rl == SkipInitCheck #we still needed to population function signature step above, but we don't verify interfaces						
-						continue
-					end
-					funcname = Inherit.getfuncname(decl)
+			### even with no subtypes, we need to go through decls to document interfaces
+			@debug "Inherit.jl requires interface definitions defined in base type $(Inherit.tostring(identS)) to be satisfied"
+			for decl in decls							# required method declarations
+				__defmodule__ = Inherit.FULLNAME_TO_MODULE[decl.defmodulename]
+				if decl.sig === nothing
+					ret = Inherit.populatefunctionsignature!(decl, __defmodule__, identS.basename,  decls)
+					@assert decl.sig !== nothing
+				end
+				if Inherit.reportlevel == SkipInitCheck #we still needed to population function signature step above, but we don't verify interfaces						
+					continue
+				end
+				funcname = Inherit.getfuncname(decl)
 
-					### make sure the defmodule can access the implementing type
-					isforeign = __defmodule__ != @__MODULE__
-					if isforeign		#skips installing a handle if local module, so we don't litter a module with handles unnecessarily.
-						@debug "declaration was for $__defmodule__ but we're in $(@__MODULE__); not documenting"
-						Base.setproperty!(__defmodule__, LM_HANDLE, @__MODULE__)
-					elseif decl.linecomment !== nothing 	#for local module, set the @doc for method declarations
-						@debug "documenting `$funcname` with `$(decl.linecomment)`"
-						expr = :(@doc $(decl.linecomment) $funcname)
-						Core.eval(@__MODULE__, expr)
-					end
+				### make sure the defmodule can access the implementing type
+				isforeign = __defmodule__ != @__MODULE__
+				if isforeign		#skips installing a handle if local module, so we don't litter a module with handles unnecessarily.
+					@debug "declaration was for $__defmodule__ but we're in $(@__MODULE__); not documenting"
+					Base.setproperty!(__defmodule__, LM_HANDLE, @__MODULE__)
+				elseif decl.linecomment !== nothing 	#for local module, set the @doc for method declarations
+					@debug "documenting `$funcname` with `$(decl.linecomment)`"
+					expr = :(@doc $(decl.linecomment) $funcname)
+					Core.eval(@__MODULE__, expr)
+				end
 
-					### do not require method table if there are no subtypes
-					if Base.isempty(SUBTYPES)	
-						@debug "$(Inherit.tostring(identS)) has no subtypes; not requiring method implementations"
-						continue 
-					end
+				### do not require method table if there are no subtypes
+				if Base.isempty(SUBTYPES)	
+					@debug "$(Inherit.tostring(identS)) has no subtypes; not requiring method implementations"
+					continue 
+				end
 
-					### the declaration function has already been imported, get its method table
-					func = nothing
-					mt = nothing
-					if isdefined(__defmodule__, funcname)
-						func = Base.getproperty(__defmodule__, funcname)
-						mt = Base.methods(func)
+				### the declaration function has already been imported, get its method table
+				func = nothing
+				mt = nothing
+				if isdefined(__defmodule__, funcname)
+					func = Base.getproperty(__defmodule__, funcname)
+					mt = Base.methods(func)
+				end
+				if mt === nothing || Base.isempty(mt)
+					errorstr = "$(Base.nameof(__defmodule__)) does not define a method for `$funcname`, which is required by:\n$(decl.line)"
+					handle_error(errorstr)
+					continue
+				end
+
+				@debug "$(identS.basename) requires $(decl.sig) for each subtype"
+				for subtype in SUBTYPES		# each subtype must satisfy each interface signature
+					# f = sig.parameters[1].instance		#the function is still available even if all methods have been deleted
+					# mt = methods(f) 		
+					type_satisfied = false
+
+					# for each subtype it only needs to satisfy the concrete sig, where each occurrence of type T has been replaced with type subtype
+					reducedline = Inherit.reducetype(decl.line, 
+						decl.defmodulename, decl.defbasename, 
+						isforeign ? (LM_HANDLE,) : LOCALMOD, subtype)
+					
+					###we rename the reduced function before evaluating to get the signature, in order to prevent overwriting existing implementing method
+					reducedline = Inherit.privatize_funcname(reducedline)
+					f = __defmodule__.eval(reducedline) 
+					reducedmethod = Inherit.last_method_def(f)
+					#restore the functype signature from the original declaration
+					reducedsig = Inherit.set_sig_functype(__defmodule__, reducedmethod.sig, decl.sig.types[1])
+					#this is safe to delete because it's on the renamed function
+					Base.delete_method(reducedmethod)  #NOTE: it's okay to delete_method here because we're in the module init not the precompilation phase.						
+
+					for m in mt				#methods implemented on function of required sig
+						if decl.sig <: m.sig	# being a supersig in the unmodified version satisfies all subtypes. 
+							type_satisfied = true
+							@debug "all subtypes have been satisfied by $(m.sig)"
+							# @goto all_types_satisfy_sig
+						elseif reducedsig <: m.sig
+							@debug "subtype $(Inherit.tostring(LOCALMOD, subtype)) satisfied by $(m.sig)"
+							type_satisfied = true
+						end							
 					end
-					if mt === nothing || Base.isempty(mt)
-						errorstr = "$(Base.nameof(__defmodule__)) does not define a method for `$funcname`, which is required by:\n$(decl.line)"
+					if !type_satisfied
+						errorstr = "subtype $(Inherit.tostring(LOCALMOD, subtype)) missing $reducedsig declared as:\n$(decl.line)"
 						handle_error(errorstr)
-						continue
 					end
+				end	#end subtypes
 
-					@debug "$(identS.basename) requires $(decl.sig) for each subtype"
-					for subtype in SUBTYPES		# each subtype must satisfy each interface signature
-						# f = sig.parameters[1].instance		#the function is still available even if all methods have been deleted
-						# mt = methods(f) 		
-						type_satisfied = false
-
-						# for each subtype it only needs to satisfy the concrete sig, where each occurrence of type T has been replaced with type subtype
-						reducedline = Inherit.reducetype(decl.line, 
-							decl.defmodulename, decl.defbasename, 
-							isforeign ? (LM_HANDLE,) : LOCALMOD, subtype)
-						
-						###we rename the reduced function before evaluating to get the signature, in order to prevent overwriting existing implementing method
-						reducedline = Inherit.privatize_funcname(reducedline)
-						f = __defmodule__.eval(reducedline) 
-						reducedmethod = Inherit.last_method_def(f)
-						#restore the functype signature from the original declaration
-						reducedsig = Inherit.set_sig_functype(__defmodule__, reducedmethod.sig, decl.sig.types[1])
-						#this is safe to delete because it's on the renamed function
-						Base.delete_method(reducedmethod)  #NOTE: it's okay to delete_method here because we're in the module init not the precompilation phase.						
-
-						for m in mt				#methods implemented on function of required sig
-							if decl.sig <: m.sig	# being a supersig in the unmodified version satisfies all subtypes. 
-								type_satisfied = true
-								@debug "all subtypes have been satisfied by $(m.sig)"
-								# @goto all_types_satisfy_sig
-							elseif reducedsig <: m.sig
-								@debug "subtype $(Inherit.tostring(LOCALMOD, subtype)) satisfied by $(m.sig)"
-								type_satisfied = true
-							end							
-						end
-						if !type_satisfied
-							errorstr = "subtype $(Inherit.tostring(LOCALMOD, subtype)) missing $reducedsig declared as:\n$(decl.line)"
-							handle_error(errorstr)
-						end
-					end	#end subtypes
-
-					# @info "all checked"
-					# @label all_types_satisfy_sig
-					# @info "$decl done"
-					#FIXME: report "Unreachable reached at" error with label here
-				end #end decls
-			end #end DMB
-			if modentry.rl == SkipInitCheck 
-				@debug "skipping init check"
-			elseif $summarycall != nothing
-				summarystr = """Inherit.jl: processed $(join(LOCALMOD, '.')) with $(Inherit.singular_or_plural(n_supertypes, "supertype")) having $(Inherit.singular_or_plural(n_signatures, "method requirement")). $(Inherit.singular_or_plural(n_subtypes, "subtype was", "subtypes were")) checked with $(Inherit.singular_or_plural(n_errors, "missing method"))."""
-				Core.eval(@__MODULE__, Expr(:macrocall, $summarycall, LineNumberNode(@__LINE__, @__FILE__), summarystr))
-			end
-		else
-			@debug "I don't require any definitions"
-		end		
+				# @info "all checked"
+				# @label all_types_satisfy_sig
+				# @info "$decl done"
+				#FIXME: report "Unreachable reached at" error with label here
+			end #end decls
+		end #end DMB
+		if Inherit.reportlevel == SkipInitCheck 
+			@debug "skipping init check"
+		elseif $summarycall != nothing
+			summarystr = """Inherit.jl: processed $(join(LOCALMOD, '.')) with $(Inherit.singular_or_plural(n_supertypes, "supertype")) having $(Inherit.singular_or_plural(n_signatures, "method requirement")). $(Inherit.singular_or_plural(n_subtypes, "subtype was", "subtypes were")) checked with $(Inherit.singular_or_plural(n_errors, "missing method"))."""
+			Core.eval(@__MODULE__, Expr(:macrocall, $summarycall, LineNumberNode(@__LINE__, @__FILE__), summarystr))
+		end
 
 	@label process_postinit
-		@debug "processing $(Base.length(modentry.postinit)) module inits..."
-		for f in modentry.postinit
+		@debug "processing $(Base.length(modinfo.postinit)) module inits..."
+		for f in modinfo.postinit
 			f()
 		end
 	end end 	#end quote
@@ -399,15 +389,10 @@ The function name must be different from `__init__`, or it will overwrite Inheri
 macro postinit(ex)
 	@assert MacroTools.isdef(ex) "function definition expected"
 	setup_module_db(__module__)
+	modinfo = getproperty(__module__, H_COMPILETIMEINFO)
+	push!(modinfo.postinit, Core.eval(__module__, ex))
+	@debug "module entry $modinfo added under $__module__"
 
-	modentry = Inherit.getmoduleentry(__module__)
-
-	if modentry.rl == SkipInitCheck
-		return :(throw(SettingsError("module is set to SkipInitCheck. @postinit requires ThrowError or ShowMessage setting.")))
-	else
-		push!(modentry.postinit, Core.eval(__module__, ex))
-		@debug "module entry $modentry added under $__module__"
-	end
 	nothing
 end
 
@@ -443,50 +428,31 @@ macro implement(ex)
 	# dump(S; maxdepth=16)
 
 	### evaluate the supertype expression so we can get the correct module
-	identS, U_DBSPEC, U_DBM = process_supertype(__module__, S)
+	identS, modinfoS = process_supertype(__module__, S)
 	if identS === nothing
 		errorstr = "$S is not a valid type for implementation by $T; it was not declared with @abstractbase"
 		return :(throw(ImplementError($errorstr)))
 	end
 
-	specS = U_DBSPEC[identS.basename]		#using S is not reliable here because it may have module path in it
+	specS = modinfoS.localtypespec[identS.basename]		#using S is not reliable here because it may have module path in it
 	if ismutable != specS.ismutable
 		errorstr = "mutability of $S is $(specS.ismutable) but that of $T is $ismutable"
 		return :(throw(ImplementError($errorstr)))
 	end
 	# recording as subtype in the local module's dict. this activates any method requirements for the supertype
-	DBS = getproperty(__module__, H_SUBTYPES)
-	DBM = getproperty(__module__, H_METHODS)
+	modinfoT = getproperty(__module__, H_COMPILETIMEINFO)
+	localsubtypes = modinfoT.subtypes
 
-	if U_DBM != DBM		#foreign module
-		if !haskey(DBS, identS)
+	if modinfoS != modinfoT		#foreign module
+		if !haskey(localsubtypes, identS)
 			# @assert identS.modulefullname != fullname(__module__) "if $S was defined in the current module, it should have created an entry in DBS"
-			DBS[identS] = Vector{Symbol}()
+			localsubtypes[identS] = Vector{Symbol}()
 		end
-		DBM[identS] = U_DBM[identS]
+		modinfoT.methods[identS] = modinfoS.methods[identS]
 	else						#local module
-		@assert haskey(DBS, identS)
+		@assert haskey(localsubtypes, identS)
 	end
-	push!(DBS[identS], T)
-
-	# if moduleS === __module__			# super type is from same module
-	# 	ident = TypeIdentifier((MOD, nameS))
-	# 	@assert haskey(DBS, ident)		# should have been created when super type was declared
-	# 	push!(DBS[ident], T)
-	# else
-	# 	# copy super type's method signatures from foreign module into this module, so they can be verified on module init
-	# 	FOREIGN_DBM = getproperty(moduleS, H_METHODS)
-	# 	FOREIGN_MOD = fullname(moduleS)
-	# 	DBM = getproperty(__module__, H_METHODS)
-	# 	ident = TypeIdentifier((FOREIGN_MOD, nameS))
-	# 	DBM[ident] = FOREIGN_DBM[ident]
-
-	# 	# add subtype under imported name
-	# 	if !haskey(DBS, ident)
-	# 		DBS[ident] = Vector{Symbol}()
-	# 	end
-	# 	push!(DBS[ident], T)
-	# end
+	push!(localsubtypes[identS], T)
 
 	# add the type parameters if they exist
 	if !isempty(specS.typeparams) || P !== nothing

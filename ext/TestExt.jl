@@ -24,19 +24,31 @@ macro test_nothrows(exp, args...)
 		else
 			local _test_result = true
 			local _exception = nothing
+			local _backtrace = nothing
 			try
 				$(esc(exp))
 			catch ex
 				_test_result = false
 				_exception = ex
+				_backtrace = catch_backtrace()
 			end
 			if _test_result
 				@test true $(args...)
 			else
-				# Create a proper Test.Fail result with custom message
+				# Create a proper Test.Fail result with exception message in data field
 				local ts = get_testset()
-				local custom_msg = "Expression $($exp_str) threw exception: $(_exception)"
-				local fail_result = Fail(:test_nothrows, $exp_str, custom_msg, nothing, nothing, $(QuoteNode(__source__)), false)
+				local exception_msg = string(_exception)
+				
+				# Format the backtrace as a string
+				local bt_io = IOBuffer()
+				Base.show_backtrace(bt_io, _backtrace)
+				local bt_str = String(take!(bt_io))
+				
+				# Include both expression and exception in the displayed information
+				local display_expr = "$($exp_str) threw exception: $exception_msg"
+				# Create custom message to display the exception with backtrace
+				local custom_message = "$($exp_str) threw exception: $exception_msg\nStacktrace:\n$bt_str"
+				local fail_result = Fail(:test_nothrows, custom_message, display_expr, _exception, nothing, $(QuoteNode(__source__)), true)
 				record(ts, fail_result)
 			end
 		end

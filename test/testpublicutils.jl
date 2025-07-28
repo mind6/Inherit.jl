@@ -8,8 +8,9 @@ using Inherit, Test
 	ts = Test.DefaultTestSet("expected_failure")
 	Test.push_testset(ts)
 	
+	f() = error("test message")
 	try
-		@test_nothrows error("test message")
+		@test_nothrows f()
 	finally
 		Test.pop_testset()
 	end
