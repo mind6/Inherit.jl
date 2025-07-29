@@ -1,4 +1,5 @@
 using Test, Inherit
+ENV["JULIA_DEBUG"] = "Inherit"
 
 "
 Basic interface definition test. Interfaces can be redefined replacing existing definition. They are verified on module __init__(). 
@@ -40,6 +41,8 @@ module M1
 	function cost(apple::Apple, unitprice::Float32)
 		unitprice * (apple.weight + apple.coresize) 
 	end
+
+	@verify_interfaces
 	
 	@testset "basic field inheritance" begin 
 		@test_throws ArgumentError fieldnames(Fruit)		#interfaces are abstract types
@@ -57,9 +60,9 @@ module M1
 		@test strip(string(@doc(Fruit))) == "third base type"
 		@test strip(string(@doc(Orange))) == "derived types can also be documented"
 
-		@test_nothrows __init__()
+		# @test_nothrows __init__()
 		#NOTE: unfortunately, the method declaration comment will be last one in the module
-		@test replace(string(@doc M1.cost), "\n"=>"") == "has more thanone parta useful function"
+		# @test replace(string(@doc M1.cost), "\n"=>"") == "has more thanone parta useful function"
 	end
 end
 
@@ -105,6 +108,7 @@ module M2
 	function M1.cost(item::Orange1, unitprice::Number)
 		item.weight * unitprice
 	end
+	@verify_interfaces
 	@testset "implement @abstractbase from another module" begin
 		@test fieldnames(Orange) == (:weight2,)
 		@test fieldnames(Orange1) == (:weight,)
@@ -135,6 +139,7 @@ module M3
 	@postinit function __myinit2__()
 		@info "second post init for $(@__MODULE__)"
 	end
+	@verify_interfaces
 
 	@testset "implement only; auto imported function" begin
 		#since M3 contains `using M1`, its cost function is identical to that of M1
@@ -183,6 +188,7 @@ module M4
 		item.weight * unitprice + item.cluster * bunchcost(item) 	
 	end
 
+	@verify_interfaces
 	@testset "multilevel inheritance" begin
 		#since M4 contains `using M1`, its cost function is identical to that of M1
 		@test all(isequal.(methods(M1.cost), methods(M4.cost)))		 
@@ -206,6 +212,10 @@ module M4fail
 	
 	@implement struct BlueBerry <: Berry end
 	bunchcost(item::BlueBerry, ::Float32) = 1.0
+
+	Inherit.reportlevel = ThrowError
+
+	@verify_interfaces
 
 	@testset "multilevel inheritance" begin
 		Inherit.reportlevel = ThrowError

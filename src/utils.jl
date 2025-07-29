@@ -180,6 +180,7 @@ end
 this is used by __init__ so we throw errror directly instead of returning a throw error exception.
 """
 function populatefunctionsignature!(decl::MethodDeclaration, defmodule::Module, T::Symbol, decls::Vector{MethodDeclaration})
+	# we cannot privatize the name here because this is the actual function definition
 	f = Core.eval(defmodule, decl.line)		#evaluated in calling module without hygiene pass
 	# f = Base.eval(shadow, line)		#evaluated in calling module without hygiene pass
 	m = last_method_def(f)
@@ -203,7 +204,10 @@ function populatefunctionsignature!(decl::MethodDeclaration, defmodule::Module, 
 	#NOTE: evaluating `@doc comment $(nameof(f))` here will only have a temporary effect. To persist documentation it must be done at the module __init__
 	# push!(DBM[identT], MethodDeclaration(MOD, T, line, comment, m_sig))
 	# comment = nothing
-	Base.delete_method(m)	# `WARNING: method deletion during Module precompile may lead to undefined behavior` This warning shows up even when deleting in module __init__.
+	@debug "dangling method $m left behind due to function signature extraction"
+	modinfoT = getproperty(defmodule, H_COMPILETIMEINFO)
+	push!(modinfoT.methods_to_delete, m)
+	# Base.delete_method(m)	# `WARNING: method deletion during Module precompile may lead to undefined behavior` This warning shows up even when deleting in module __init__.
 end
 
 "

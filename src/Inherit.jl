@@ -22,7 +22,7 @@ A parametric type signature can be supertype of abstract type signature
 
 """
 module Inherit
-export @abstractbase, @implement, @interface, @postinit, isprecompiling, InterfaceError, ImplementError, SettingsError, (<--), setglobalreportlevel, setreportlevel, ThrowError, ShowMessage, SkipInitCheck
+export @abstractbase, @implement, @interface, @postinit, @verify_interfaces, isprecompiling, InterfaceError, ImplementError, SettingsError, (<--), setglobalreportlevel, setreportlevel, ThrowError, ShowMessage, SkipInitCheck
 
 using MacroTools
 
@@ -102,11 +102,12 @@ It must contain strings and expressions that describe the types, but not runtime
 	# (modulefullname,funcname) pairs that have been auto imported
 	imported::Set{TypeIdentifier} = Set{TypeIdentifier}()
 
+	# methods which we added during compilation of the current module (to get signatures of functions, both defined locally and imported from foreign modules) to be deleted during __init__ (post precompilation)
+	methods_to_delete::Vector{Method} = Vector{Method}()
+
 	# user functions to be called at the end of __init__ (after Inherit.jl completes self registration)
 	postinit::Vector{Function} = Vector()
 
-	# whether or not __init__ has been created
-	init_created::Bool = false
 end
 
 const H_COMPILETIMEINFO::Symbol = :__Inherit_jl_COMPILETIMEINFO
@@ -134,7 +135,7 @@ inheritance database.
 function setup_module_db(mod::Module)
 	if !isdefined(mod, H_COMPILETIMEINFO)
 		Core.eval(mod, quote
-			global $H_COMPILETIMEINFO = Inherit.CompiletimeModuleInfo()
+			const $H_COMPILETIMEINFO = Inherit.CompiletimeModuleInfo() #this being type stable is important for module __init__ speed
 		end)
 
 		initexp = create_module__init__()
@@ -219,15 +220,7 @@ function create_module__init__()::Expr
 	# if (!init_throwsexception)
 	# 	@warn "any exceptions will show as error messages only, to allow tests to complete" init_throwsexception
 	# end
-	summarycall = QuoteNode(Symbol("@info"))
-	if haskey(ENV, E_SUMMARY_LEVEL)
-		level = lowercase(strip(ENV[E_SUMMARY_LEVEL]))
-		if level in ["debug", "info", "warn", "error"]
-			summarycall = QuoteNode(Symbol("@"*level))
-		else 
-			summarycall = nothing
-		end
-	end
+
 
 	modinfo_node = QuoteNode(H_COMPILETIMEINFO)
 	"
@@ -238,142 +231,156 @@ function create_module__init__()::Expr
 	NOTE that we should specify standard library functions explicitly, so we don't inadvertently invoke functions defined locally in the init's module.
 	"
 	quote function __init__()
-		Inherit.FULLNAME_TO_MODULE[Base.fullname(@__MODULE__)] = @__MODULE__	#we couldn't store this in macro processing stage. Only runtime module objects can be stored.
-		if !isdefined(@__MODULE__, $modinfo_node)
-			@debug "I don't require any definitions"
-			return
+		if isprecompiling() # this is only needed during precompilation to find the supertype's module object. It adds 40ms to module load time just by itself
+			Inherit.FULLNAME_TO_MODULE[Base.fullname(@__MODULE__)] = @__MODULE__	
 		end
+		# if !isdefined(@__MODULE__, $modinfo_node)
+		# 	println("I don't require any definitions")
+		# 	return
+		# end
 		modinfo = getproperty(@__MODULE__, $modinfo_node)
-		@debug "$(@__MODULE__) contains module entry $modinfo"
+		# # @debug "$(@__MODULE__) contains module entry $modinfo"
 
-		if Inherit.isprecompiling()	#Can't use eval when precompiling. Precompilation "closes" a package. If Pkg2 loads precompiled Pkg1, Pkg1.__init__() will fire, which fails when trying to eval into closed Pkg1.
-			@goto process_postinit 
-		end
-
-		n_supertypes = n_subtypes = n_signatures = n_errors = 0
-
-		function handle_error(errorstr::String)
-			n_errors += 1
-			if Inherit.reportlevel == Inherit.ThrowError
-				throw(ImplementError(errorstr))
-			else
-				@assert Inherit.reportlevel == Inherit.ShowMessage
-				@error errorstr
-			end
-		end
-
-		LOCALMOD = Base.fullname(@__MODULE__)
-		LM_HANDLE  = Symbol(:__Inherit_jl_, LOCALMOD[end])
-		for (identS, decls) ∈ modinfo.methods
-			n_supertypes += 1
-			# __supertypemod__ = Inherit.getmodule(identS.modulefullname)
-			# isforeign = __supertypemod__ != @__MODULE__
-			# if isforeign	#skips installing a handle if local module, so we don't litter a module with handles unnecessarily.
-			# 	setproperty!(__supertypemod__, LM_HANDLE, @__MODULE__)
-			# end
-			SUBTYPES = modinfo.subtypes[identS]
-			n_subtypes += Base.length(SUBTYPES)
-			n_signatures += Base.length(decls)
-
-			### even with no subtypes, we need to go through decls to document interfaces
-			@debug "Inherit.jl requires interface definitions defined in base type $(Inherit.tostring(identS)) to be satisfied"
-			for decl in decls							# required method declarations
-				__defmodule__ = Inherit.FULLNAME_TO_MODULE[decl.defmodulename]
-				if decl.sig === nothing
-					ret = Inherit.populatefunctionsignature!(decl, __defmodule__, identS.basename,  decls)
-					@assert decl.sig !== nothing
-				end
-				if Inherit.reportlevel == SkipInitCheck #we still needed to population function signature step above, but we don't verify interfaces						
-					continue
-				end
-				funcname = Inherit.getfuncname(decl)
-
-				### make sure the defmodule can access the implementing type
-				isforeign = __defmodule__ != @__MODULE__
-				if isforeign		#skips installing a handle if local module, so we don't litter a module with handles unnecessarily.
-					@debug "declaration was for $__defmodule__ but we're in $(@__MODULE__); not documenting"
-					Base.setproperty!(__defmodule__, LM_HANDLE, @__MODULE__)
-				elseif decl.linecomment !== nothing 	#for local module, set the @doc for method declarations
-					@debug "documenting `$funcname` with `$(decl.linecomment)`"
-					expr = :(@doc $(decl.linecomment) $funcname)
-					Core.eval(@__MODULE__, expr)
-				end
-
-				### do not require method table if there are no subtypes
-				if Base.isempty(SUBTYPES)	
-					@debug "$(Inherit.tostring(identS)) has no subtypes; not requiring method implementations"
-					continue 
-				end
-
-				### the declaration function has already been imported, get its method table
-				func = nothing
-				mt = nothing
-				if isdefined(__defmodule__, funcname)
-					func = Base.getproperty(__defmodule__, funcname)
-					mt = Base.methods(func)
-				end
-				if mt === nothing || Base.isempty(mt)
-					errorstr = "$(Base.nameof(__defmodule__)) does not define a method for `$funcname`, which is required by:\n$(decl.line)"
-					handle_error(errorstr)
-					continue
-				end
-
-				@debug "$(identS.basename) requires $(decl.sig) for each subtype"
-				for subtype in SUBTYPES		# each subtype must satisfy each interface signature
-					# f = sig.parameters[1].instance		#the function is still available even if all methods have been deleted
-					# mt = methods(f) 		
-					type_satisfied = false
-
-					# for each subtype it only needs to satisfy the concrete sig, where each occurrence of type T has been replaced with type subtype
-					reducedline = Inherit.reducetype(decl.line, 
-						decl.defmodulename, decl.defbasename, 
-						isforeign ? (LM_HANDLE,) : LOCALMOD, subtype)
-					
-					###we rename the reduced function before evaluating to get the signature, in order to prevent overwriting existing implementing method
-					reducedline = Inherit.privatize_funcname(reducedline)
-					f = __defmodule__.eval(reducedline) 
-					reducedmethod = Inherit.last_method_def(f)
-					#restore the functype signature from the original declaration
-					reducedsig = Inherit.set_sig_functype(__defmodule__, reducedmethod.sig, decl.sig.types[1])
-					#this is safe to delete because it's on the renamed function
-					Base.delete_method(reducedmethod)  #NOTE: it's okay to delete_method here because we're in the module init not the precompilation phase.						
-
-					for m in mt				#methods implemented on function of required sig
-						if decl.sig <: m.sig	# being a supersig in the unmodified version satisfies all subtypes. 
-							type_satisfied = true
-							@debug "all subtypes have been satisfied by $(m.sig)"
-							# @goto all_types_satisfy_sig
-						elseif reducedsig <: m.sig
-							@debug "subtype $(Inherit.tostring(LOCALMOD, subtype)) satisfied by $(m.sig)"
-							type_satisfied = true
-						end							
-					end
-					if !type_satisfied
-						errorstr = "subtype $(Inherit.tostring(LOCALMOD, subtype)) missing $reducedsig declared as:\n$(decl.line)"
-						handle_error(errorstr)
-					end
-				end	#end subtypes
-
-				# @info "all checked"
-				# @label all_types_satisfy_sig
-				# @info "$decl done"
-				#FIXME: report "Unreachable reached at" error with label here
-			end #end decls
-		end #end DMB
-		if Inherit.reportlevel == SkipInitCheck 
-			@debug "skipping init check"
-		elseif $summarycall != nothing
-			summarystr = """Inherit.jl: processed $(join(LOCALMOD, '.')) with $(Inherit.singular_or_plural(n_supertypes, "supertype")) having $(Inherit.singular_or_plural(n_signatures, "method requirement")). $(Inherit.singular_or_plural(n_subtypes, "subtype was", "subtypes were")) checked with $(Inherit.singular_or_plural(n_errors, "missing method"))."""
-			Core.eval(@__MODULE__, Expr(:macrocall, $summarycall, LineNumberNode(@__LINE__, @__FILE__), summarystr))
-		end
-
-	@label process_postinit
-		@debug "processing $(Base.length(modinfo.postinit)) module inits..."
-		for f in modinfo.postinit
+		# # if Inherit.isprecompiling()	#Can't use eval when precompiling. Precompilation "closes" a package. If Pkg2 loads precompiled Pkg1, Pkg1.__init__() will fire, which fails when trying to eval into closed Pkg1.
+		# # 	@goto process_postinit 
+		# # end
+		# # @label process_postinit
+		# println("processing $(Base.length(modinfo.postinit)) module inits...")
+		for f in modinfo.postinit 
 			f()
+		end
+		for m in modinfo.methods_to_delete 
+			Base.delete_method(m)
 		end
 	end end 	#end quote
 end
+
+macro verify_interfaces()
+	Inherit.FULLNAME_TO_MODULE[Base.fullname(__module__)] = __module__	# we need the map at compile time too
+
+	n_supertypes = n_subtypes = n_signatures = n_errors = 0
+
+	function handle_error(errorstr::String)
+		n_errors += 1
+		if Inherit.reportlevel == Inherit.ThrowError
+			throw(ImplementError(errorstr))
+		else
+			@assert Inherit.reportlevel == Inherit.ShowMessage
+			@error errorstr
+		end
+	end
+	modinfo = getproperty(__module__, H_COMPILETIMEINFO)
+	LOCALMOD = Base.fullname(__module__)
+	LM_HANDLE  = Symbol(:__Inherit_jl_, LOCALMOD[end])
+	for (identS, decls) ∈ modinfo.methods
+		n_supertypes += 1
+		# __supertypemod__ = Inherit.getmodule(identS.modulefullname)
+		# isforeign = __supertypemod__ != @__MODULE__
+		# if isforeign	#skips installing a handle if local module, so we don't litter a module with handles unnecessarily.
+		# 	setproperty!(__supertypemod__, LM_HANDLE, @__MODULE__)
+		# end
+		SUBTYPES = modinfo.subtypes[identS]
+		n_subtypes += Base.length(SUBTYPES)
+		n_signatures += Base.length(decls)
+
+		### even with no subtypes, we need to go through decls to document interfaces
+		@debug "Inherit.jl requires interface definitions defined in base type $(Inherit.tostring(identS)) to be satisfied"
+		for decl in decls							# required method declarations
+			__defmodule__ = Inherit.FULLNAME_TO_MODULE[decl.defmodulename]
+			if decl.sig === nothing
+				ret = Inherit.populatefunctionsignature!(decl, __defmodule__, identS.basename,  decls)
+				@assert decl.sig !== nothing
+			end
+			if Inherit.reportlevel == SkipInitCheck #we still needed to population function signature step above, but we don't verify interfaces						
+				continue
+			end
+			funcname = Inherit.getfuncname(decl)
+
+			### make sure the defmodule can access the implementing type
+			isforeign = __defmodule__ != __module__
+			if isforeign		#skips installing a handle if local module, so we don't litter a module with handles unnecessarily.
+				@debug "declaration was for $__defmodule__ but we're in $(__module__); not documenting"
+				Base.setproperty!(__defmodule__, LM_HANDLE, __module__)
+			elseif decl.linecomment !== nothing 	#for local module, set the @doc for method declarations
+				@debug "documenting `$funcname` with `$(decl.linecomment)`"
+				expr = :(@doc $(decl.linecomment) $funcname)
+				Core.eval(__module__, expr)
+			end
+
+			### do not require method table if there are no subtypes
+			if Base.isempty(SUBTYPES)	
+				@debug "$(Inherit.tostring(identS)) has no subtypes; not requiring method implementations"
+				continue 
+			end
+
+			### the declaration function has already been imported, get its method table
+			func = nothing
+			mt = nothing
+			if isdefined(__defmodule__, funcname)
+				func = Base.getproperty(__defmodule__, funcname)
+				mt = Base.methods(func)
+			end
+			if mt === nothing || Base.isempty(mt)
+				errorstr = "$(Base.nameof(__defmodule__)) does not define a method for `$funcname`, which is required by:\n$(decl.line)"
+				handle_error(errorstr)
+				continue
+			end
+
+			@debug "$(identS.basename) requires $(decl.sig) for each of $(join(SUBTYPES, ", "))"
+			for subtype in SUBTYPES		# each subtype must satisfy each interface signature
+				# f = sig.parameters[1].instance		#the function is still available even if all methods have been deleted
+				# mt = methods(f) 		
+				@debug "checking subtype $subtype"
+
+				type_satisfied = false
+
+				# for each subtype it only needs to satisfy the concrete sig, where each occurrence of type T has been replaced with type subtype
+				@show decl
+				reducedline = Inherit.reducetype(decl.line, 
+					decl.defmodulename, decl.defbasename, 
+					isforeign ? (LM_HANDLE,) : LOCALMOD, subtype)
+				@debug "evaluating $reducedline"
+
+				###we rename the reduced function before evaluating to get the signature, in order to prevent overwriting existing implementing method
+				reducedline = Inherit.privatize_funcname(reducedline)
+				f = __defmodule__.eval(reducedline) 
+				reducedmethod = Inherit.last_method_def(f)
+				#restore the functype signature from the original declaration
+				reducedsig = Inherit.set_sig_functype(__defmodule__, reducedmethod.sig, decl.sig.types[1])
+				#this is safe to delete because it's on the renamed function
+				@debug "dangling method $reducedmethod left behind due to function signature replacement"
+				push!(modinfo.methods_to_delete, reducedmethod)
+				# Base.delete_method(reducedmethod)  #NOTE: it's okay to delete_method here because we're in the module init not the precompilation phase.						
+
+				for m in mt				#methods implemented on function of required sig
+					if decl.sig <: m.sig	# being a supersig in the unmodified version satisfies all subtypes. 
+						type_satisfied = true
+						@debug "all subtypes have been satisfied by $(m.sig)"
+						# @goto all_types_satisfy_sig
+					elseif reducedsig <: m.sig
+						@debug "subtype $(Inherit.tostring(LOCALMOD, subtype)) satisfied by $(m.sig)"
+						type_satisfied = true
+					end							
+				end
+				if !type_satisfied
+					errorstr = "subtype $(Inherit.tostring(LOCALMOD, subtype)) missing $reducedsig declared as:\n$(decl.line)"
+					handle_error(errorstr)
+				end
+			end	#end subtypes
+
+			# @info "all checked"
+			# @label all_types_satisfy_sig
+			# @info "$decl done"
+			#FIXME: report "Unreachable reached at" error with label here
+		end #end decls
+	end #end DMB
+	if Inherit.reportlevel == SkipInitCheck 
+		@debug "skipping init check"
+	else
+		summarystr = """Inherit.jl: processed $(join(LOCALMOD, '.')) with $(Inherit.singular_or_plural(n_supertypes, "supertype")) having $(Inherit.singular_or_plural(n_signatures, "method requirement")). $(Inherit.singular_or_plural(n_subtypes, "subtype was", "subtypes were")) checked with $(Inherit.singular_or_plural(n_errors, "missing method"))."""
+		@info summarystr
+	end
+end 
 
 "
 Requires a single function definition expression.
