@@ -1,4 +1,5 @@
 using MacroTools, Test
+using Inherit
 module m123
 module m1234
 module m12345
@@ -60,7 +61,7 @@ end
 
 	sig = methods(findmax)[1].sig
 	@test Inherit.make_variable_tupletype(@__MODULE__, sig.types...) == sig
-	@test MacroTools.splitdef(Inherit.privatize_funcname(:( function f(x::Main.M1.M1.Fruit) end)))[:name] == :__f
+	@test MacroTools.splitdef(Inherit.privatize_funcname(:( function f(x::Main.M1.M1.Fruit) end)))[:name] == :__Inherit_jl_f
 
 end
 
@@ -172,4 +173,50 @@ end
 # 	@capture(:(::Vector{Fruit}), ::T_Symbol)
 # 	@show T
 # end
+
+#=
+Tests for build_import_expr function
+Tests that it correctly builds import expressions for single and multiple packages,
+and properly handles edge cases like empty input
+=#
+@testset "build_import_expr" begin
+    # Test single package import
+    expr1 = Inherit.build_import_expr(:PkgTest1)
+    @test expr1.head == :import
+    @test length(expr1.args) == 1
+    @test expr1.args[1] isa Expr
+    @test expr1.args[1].head == :.
+    @test expr1.args[1].args[1] == :PkgTest1
+    
+    # Test multiple package import
+    expr2 = Inherit.build_import_expr(:PkgTest1, :PkgTest2, :DataFrames)
+    @test expr2.head == :import
+    @test length(expr2.args) == 3
+    @test all(arg isa Expr && arg.head == :. for arg in expr2.args)
+    @test expr2.args[1].args[1] == :PkgTest1
+    @test expr2.args[2].args[1] == :PkgTest2
+    @test expr2.args[3].args[1] == :DataFrames
+    
+    # Test two package import
+    expr3 = Inherit.build_import_expr(:Foo, :Bar)
+    @test expr3.head == :import
+    @test length(expr3.args) == 2
+    @test all(arg isa Expr && arg.head == :. for arg in expr3.args)
+    @test expr3.args[1].args[1] == :Foo
+    @test expr3.args[2].args[1] == :Bar
+    
+    # Test error on empty input
+    @test_throws ArgumentError Inherit.build_import_expr()
+    
+    # Test that expressions can be evaluated (syntactically valid)
+    for expr in [expr1, expr2, expr3]
+        @test Meta.isexpr(expr, :import)
+        @test all(Meta.isexpr(arg, :.) for arg in expr.args)
+    end
+    
+    # Test equivalence to literal import expressions
+    @test expr1 == :(import PkgTest1)
+    @test expr2 == :(import PkgTest1, PkgTest2, DataFrames)
+    @test expr3 == :(import Foo, Bar)
+end
 

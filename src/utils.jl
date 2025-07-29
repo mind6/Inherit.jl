@@ -327,11 +327,11 @@ function set_sig_functype(curmodule::Module, sig::Type{<:Tuple}, functype::DataT
 	end
 end
 
-"prepend __ to function name"
+"prepend __Inherit_jl_ to function name"
 function privatize_funcname(funcdef::Expr)::Expr
 	MacroTools.postwalk(x->begin
 		if x isa Expr && x.head == :call
-			x.args[1] = Symbol("__", x.args[1]) 
+			x.args[1] = Symbol("__Inherit_jl_", x.args[1]) 
 		end
 		x
 	end, funcdef)
@@ -395,4 +395,35 @@ function generate_construct_function(constructor_expr)
 	ftype = Expr(:(::), fargs, :Tuple)
 	fdef = Expr(:function, ftype, func_body)
 	return fdef
+end
+
+"""
+Builds a dynamic import expression for multiple package names.
+
+Creates an expression equivalent to `import pkg1, pkg2, ...` from a collection of package symbols.
+
+# Arguments
+- `pkgnames`: Symbols representing package names to import
+
+# Returns
+- `Expr`: An import expression that can be evaluated
+
+# Examples
+```julia
+# Single package
+expr = build_import_expr(:PkgTest1)
+# Returns: :(import PkgTest1)
+
+# Multiple packages  
+expr = build_import_expr(:PkgTest1, :PkgTest2, :DataFrames)
+# Returns: :(import PkgTest1, PkgTest2, DataFrames)
+```
+"""
+function build_import_expr(pkgnames::Symbol...)::Expr
+    if length(pkgnames) == 0
+        throw(ArgumentError("At least one package name must be provided"))
+    end
+    # Each package name needs to be wrapped in Expr(:., symbol) for proper import syntax
+    import_args = [Expr(:., pkg) for pkg in pkgnames]
+    Expr(:import, import_args...)
 end

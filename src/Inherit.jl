@@ -22,12 +22,16 @@ A parametric type signature can be supertype of abstract type signature
 
 """
 module Inherit
-export @abstractbase, @implement, @interface, @postinit, @verify_interfaces, isprecompiling, InterfaceError, ImplementError, SettingsError, (<--), setglobalreportlevel, setreportlevel, ThrowError, ShowMessage, SkipInitCheck
+export @abstractbase, @implement, @interface, @postinit, @verify_interfaces, isprecompiling, InterfaceError, ImplementError, SettingsError, (<--), setglobalreportlevel, setreportlevel, ThrowError, ShowMessage, SkipInitCheck, build_import_expr
 
 using MacroTools
 
 macro test_nothrows end
 export @test_nothrows
+
+
+function warmup_import_package end
+export warmup_import_package
 
 __precompile__(true)
 
@@ -246,12 +250,14 @@ function create_module__init__()::Expr
 		# # end
 		# # @label process_postinit
 		# println("processing $(Base.length(modinfo.postinit)) module inits...")
-		for f in modinfo.postinit 
-			f()
-		end
 		for m in modinfo.methods_to_delete 
 			Base.delete_method(m)
 		end
+
+		for f in modinfo.postinit 
+			f()
+		end
+
 	end end 	#end quote
 end
 
@@ -302,9 +308,9 @@ macro verify_interfaces()
 				@debug "declaration was for $__defmodule__ but we're in $(__module__); not documenting"
 				Base.setproperty!(__defmodule__, LM_HANDLE, __module__)
 			elseif decl.linecomment !== nothing 	#for local module, set the @doc for method declarations
-				@debug "documenting `$funcname` with `$(decl.linecomment)`"
-				expr = :(@doc $(decl.linecomment) $funcname)
-				Core.eval(__module__, expr)
+				# @debug "documenting `$funcname` with `$(decl.linecomment)`"
+				# expr = :(@doc $(decl.linecomment) $funcname)
+				# Core.eval(__module__, expr)	#documents the method declaration not in the defining module, but the implementing module
 			end
 
 			### do not require method table if there are no subtypes

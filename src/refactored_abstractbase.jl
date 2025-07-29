@@ -197,7 +197,7 @@ function process_method_declaration(current_module, type_name, ident, line, comm
 		push!(modinfo.constructor_definitions[ident], ConstructorDefinition(module_fullname, type_name, line, construct_function, comment))
 	elseif body === nothing || isempty(body)
 		# Regular method declaration - just declare the function without methods
-		Core.eval(current_module, :(function $(funcname) end))
+		Core.eval(current_module, :(@doc $comment function $(funcname) end))
 		
 		# Store method declaration in the database
 		push!(modinfo.methods[ident], MethodDeclaration(module_fullname, type_name, line, comment, funcname, nothing))

@@ -8,9 +8,11 @@ MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 
 [weakdeps]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 
 [extensions]
 TestExt = "Test"
+DistributedExt = "Distributed"
 
 [compat]
 MacroTools = "0.5, 0.6, 0.7"

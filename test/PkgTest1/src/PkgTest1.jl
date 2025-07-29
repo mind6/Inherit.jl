@@ -2,8 +2,7 @@ module PkgTest1
 
 using Inherit
 
-# using Inherit, Test 
-
+export Fruit, Orange, Kiwi, Apple, cost, NoSubTypesOK
 
 "base types can be documented"
 @abstractbase struct NoSubTypesOK impliedAnyOK end
@@ -39,34 +38,12 @@ end
 
 @verify_interfaces
 
+
+
 # raninit::Bool = false
 # @postinit function __myinit__()	#NOTE: this method gets run during precompilation and its results are baked into PkgTest1
 # 	# @info("$(@__MODULE__) postinit executed")
 # 	global raninit = true
-# end
-
-# function run()
-# 	@info "Running PkgTest1 post init tests..."
-# 	@testset "basic field inheritance" begin 
-# 		@test_throws ArgumentError fieldnames(Fruit)		#interfaces are abstract types
-# 		@test fieldnames(Orange) == fieldnames(Kiwi) == (:weight,)
-# 		@test fieldnames(Apple) == (:weight, :coresize)
-# 	end
-
-# 	@testset "method dispatch from abstractbase" begin
-# 		basket = Fruit[Orange(1), Kiwi(2.0), Apple(3,4)]
-# 		@test [cost(item, 2.0f0) for item in basket] == [2.0f0, 4.0f0, 14.0f0]
-# 	end
-
-# 	@testset "method comments require __init__" begin
-# 		@test strip(string(@doc(NoSubTypesOK))) == "base types can be documented"
-# 		@test strip(string(@doc(Fruit))) == "third base type"
-# 		@test strip(string(@doc(Orange))) == "derived types can also be documented"
-
-# 		@test_nothrows __init__()
-# 		#NOTE: unfortunately, the method declaration comment will be last one in the module
-# 		@test replace(string(@doc PkgTest1.cost), "\n"=>"") == "has more thanone parta useful function"
-# 	end
 # end
 
 end # module PkgTest1
