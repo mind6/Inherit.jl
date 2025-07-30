@@ -196,11 +196,16 @@ function process_method_declaration(current_module, type_name, ident, line, comm
 		# Store the constructor prototype for later implementation
 		push!(modinfo.constructor_definitions[ident], ConstructorDefinition(module_fullname, type_name, line, construct_function, comment))
 	elseif body === nothing || isempty(body)
-		# Regular method declaration - just declare the function without methods
-		Core.eval(current_module, :(@doc $comment function $(funcname) end))
-		
+		# Regular method declaration -  declare the function without methods in the current_module
+		f = Core.eval(current_module, :(function $(funcname) end)) # get the function object itself
+		@doc comment f 	# document the function in the current_module
+
+		functype = typeof(f)
+		# shadowmodule = createshadowmodule(current_module)
+		shadowsig = make_function_signature(current_module, functype, line)
+		# shadowsig = make_function_signature(shadowmodule, functype, line)
 		# Store method declaration in the database
-		push!(modinfo.methods[ident], MethodDeclaration(module_fullname, type_name, line, comment, funcname, nothing))
+		push!(modinfo.methods[ident], MethodDeclaration(module_fullname, type_name, line, comment, funcname, functype, shadowsig))
 	else
 		errorstr = "Cannot recognize $line as a valid prototype definition. It must look like `function funcname(...) end` without a body."
 		return :(throw(InterfaceError($errorstr)))

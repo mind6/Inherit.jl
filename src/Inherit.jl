@@ -57,6 +57,7 @@ mutable struct MethodDeclaration
 	line::Expr	 				#the original statement AST
 	linecomment::Union{Nothing, String, Expr}		#String or Expr(:string ...) that documents the line
 	funcname::Symbol			#name of function. must be determined at type definition time. It cannot be extracted from sig because it may be empty until module __init__.
+	functype::DataType			#the original functype evaluated in original module. This is key to signature checking, and it results from the only evaluation we make into a non-temporary module.
 	sig::Union{Nothing, Type{<:Tuple}}		#the original sig evaluated in original module
 end
 
@@ -83,7 +84,7 @@ function Base.show(io::IO, x::Union{InterfaceError, ImplementError, SettingsErro
 	print(io, x.msg)
 end
 
-@enum ReportLevel ThrowError ShowMessage SkipInitCheck
+@enum ReportLevel ThrowError ShowMessage
 
 """
 There is one instance for each module which uses Inherit.jl. It is built up when @abstractbase and @implement macros execute at compile time. 
@@ -114,7 +115,11 @@ It must contain strings and expressions that describe the types, but not runtime
 
 end
 
+# name of a user module's compile time info
 const H_COMPILETIMEINFO::Symbol = :__Inherit_jl_COMPILETIMEINFO
+
+# place holder in a user module A which temporarily imports a client module B , because B wants to evaluate function signatures in A with types available in B.
+const H_TEMPORARY_CLIENTMODULE::Symbol = :__Inherit_jl_TEMPORARY_CLIENTMODULE
 
 #NOTE: this is a runtime map where user modules self-register with Inherit.jl (both when isprecompiling() is false and when it is true).
 const FULLNAME_TO_MODULE = Dict{Tuple, Module}()	#points from fullname(mod) to the mod. 
@@ -140,6 +145,9 @@ function setup_module_db(mod::Module)
 	if !isdefined(mod, H_COMPILETIMEINFO)
 		Core.eval(mod, quote
 			const $H_COMPILETIMEINFO = Inherit.CompiletimeModuleInfo() #this being type stable is important for module __init__ speed
+		end)
+		Core.eval(mod, quote
+			global $H_TEMPORARY_CLIENTMODULE::Union{Module, Nothing} = nothing
 		end)
 
 		initexp = create_module__init__()
@@ -250,8 +258,10 @@ function create_module__init__()::Expr
 		# # end
 		# # @label process_postinit
 		# println("processing $(Base.length(modinfo.postinit)) module inits...")
-		for m in modinfo.methods_to_delete 
-			Base.delete_method(m)
+		if !isprecompiling()
+			for m in modinfo.methods_to_delete 
+				Base.delete_method(m)
+			end
 		end
 
 		for f in modinfo.postinit 
@@ -261,8 +271,13 @@ function create_module__init__()::Expr
 	end end 	#end quote
 end
 
+"""
+This verifies the known interfaces of the current module. It should be placed at the end of the module, after all other Inherit macros have been executed.
+
+The macro runs as a compile time verification step. The presence of this macro is optional. If not present, clients of the module should notice no difference.
+"""
 macro verify_interfaces()
-	Inherit.FULLNAME_TO_MODULE[Base.fullname(__module__)] = __module__	# we need the map at compile time too
+	Inherit.FULLNAME_TO_MODULE[Base.fullname(__module__)] = __module__	# at compile time we need to update this map for self-lookup. The dependencies update to this same map but through runtime __init__.
 
 	n_supertypes = n_subtypes = n_signatures = n_errors = 0
 
@@ -277,7 +292,7 @@ macro verify_interfaces()
 	end
 	modinfo = getproperty(__module__, H_COMPILETIMEINFO)
 	LOCALMOD = Base.fullname(__module__)
-	LM_HANDLE  = Symbol(:__Inherit_jl_, LOCALMOD[end])
+	# LM_HANDLE  = Symbol(:__Inherit_jl_, LOCALMOD[end])
 	for (identS, decls) ∈ modinfo.methods
 		n_supertypes += 1
 		# __supertypemod__ = Inherit.getmodule(identS.modulefullname)
@@ -293,21 +308,21 @@ macro verify_interfaces()
 		@debug "Inherit.jl requires interface definitions defined in base type $(Inherit.tostring(identS)) to be satisfied"
 		for decl in decls							# required method declarations
 			__defmodule__ = Inherit.FULLNAME_TO_MODULE[decl.defmodulename]
-			if decl.sig === nothing
-				ret = Inherit.populatefunctionsignature!(decl, __defmodule__, identS.basename,  decls)
-				@assert decl.sig !== nothing
-			end
-			if Inherit.reportlevel == SkipInitCheck #we still needed to population function signature step above, but we don't verify interfaces						
-				continue
-			end
+			@assert decl.sig !== nothing
+			# if decl.sig === nothing
+			# 	ret = Inherit.populatefunctionsignature!(decl, __defmodule__, identS.basename,  decls)
+			# 	@assert decl.sig !== nothing
+			# end
+
 			funcname = Inherit.getfuncname(decl)
 
 			### make sure the defmodule can access the implementing type
 			isforeign = __defmodule__ != __module__
 			if isforeign		#skips installing a handle if local module, so we don't litter a module with handles unnecessarily.
 				@debug "declaration was for $__defmodule__ but we're in $(__module__); not documenting"
-				Base.setproperty!(__defmodule__, LM_HANDLE, __module__)
+				Base.setproperty!(__defmodule__, H_TEMPORARY_CLIENTMODULE, __module__)
 			elseif decl.linecomment !== nothing 	#for local module, set the @doc for method declarations
+				# NOTE: no longer needed because declarations are now documented in process_method_declaration()
 				# @debug "documenting `$funcname` with `$(decl.linecomment)`"
 				# expr = :(@doc $(decl.linecomment) $funcname)
 				# Core.eval(__module__, expr)	#documents the method declaration not in the defining module, but the implementing module
@@ -344,15 +359,15 @@ macro verify_interfaces()
 				@show decl
 				reducedline = Inherit.reducetype(decl.line, 
 					decl.defmodulename, decl.defbasename, 
-					isforeign ? (LM_HANDLE,) : LOCALMOD, subtype)
+					isforeign ? (H_TEMPORARY_CLIENTMODULE,) : LOCALMOD, subtype)
 				@debug "evaluating $reducedline"
 
 				###we rename the reduced function before evaluating to get the signature, in order to prevent overwriting existing implementing method
 				reducedline = Inherit.privatize_funcname(reducedline)
-				f = __defmodule__.eval(reducedline) 
+				f = __defmodule__.eval(reducedline) # TODO: this is the big blocker of our precompile only verification -- we cannot evaulate into a closed foreign module __defmodule__
 				reducedmethod = Inherit.last_method_def(f)
 				#restore the functype signature from the original declaration
-				reducedsig = Inherit.set_sig_functype(__defmodule__, reducedmethod.sig, decl.sig.types[1])
+				reducedsig = Inherit.set_sig_functype(reducedmethod.sig, decl.sig.types[1])
 				#this is safe to delete because it's on the renamed function
 				@debug "dangling method $reducedmethod left behind due to function signature replacement"
 				push!(modinfo.methods_to_delete, reducedmethod)
@@ -380,12 +395,8 @@ macro verify_interfaces()
 			#FIXME: report "Unreachable reached at" error with label here
 		end #end decls
 	end #end DMB
-	if Inherit.reportlevel == SkipInitCheck 
-		@debug "skipping init check"
-	else
-		summarystr = """Inherit.jl: processed $(join(LOCALMOD, '.')) with $(Inherit.singular_or_plural(n_supertypes, "supertype")) having $(Inherit.singular_or_plural(n_signatures, "method requirement")). $(Inherit.singular_or_plural(n_subtypes, "subtype was", "subtypes were")) checked with $(Inherit.singular_or_plural(n_errors, "missing method"))."""
-		@info summarystr
-	end
+	summarystr = """Inherit.jl: processed $(join(LOCALMOD, '.')) with $(Inherit.singular_or_plural(n_supertypes, "supertype")) having $(Inherit.singular_or_plural(n_signatures, "method requirement")). $(Inherit.singular_or_plural(n_subtypes, "subtype was", "subtypes were")) checked with $(Inherit.singular_or_plural(n_errors, "missing method"))."""
+	@info summarystr
 end 
 
 "

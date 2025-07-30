@@ -44,43 +44,52 @@ module M1
 
 	@verify_interfaces
 	
-	@testset "basic field inheritance" begin 
-		@test_throws ArgumentError fieldnames(Fruit)		#interfaces are abstract types
-		@test fieldnames(Orange) == fieldnames(Kiwi) == (:weight,)
-		@test fieldnames(Apple) == (:weight, :coresize)
-	end
+	"""
+	declarations are evaluated at compile time for their function signatures, this leaves behind empty functions in the module which are not cleaned up until runtime. If the method dispatch test is run at compile time it will fail with an ambiguous call error.
+	"""
+	function runtime_test()
+		@testset "basic field inheritance" begin 
+			@test_throws ArgumentError fieldnames(Fruit)		#interfaces are abstract types
+			@test fieldnames(Orange) == fieldnames(Kiwi) == (:weight,)
+			@test fieldnames(Apple) == (:weight, :coresize)
+		end
 
-	@testset "method dispatch from abstractbase" begin
-		basket = Fruit[Orange(1), Kiwi(2.0), Apple(3,4)]
-		@test [cost(item, 2.0f0) for item in basket] == [2.0f0, 4.0f0, 14.0f0]
-	end
+		@testset "method dispatch from abstractbase" begin
+			basket = Fruit[Orange(1), Kiwi(2.0), Apple(3,4)]
+			@test [cost(item, 2.0f0) for item in basket] == [2.0f0, 4.0f0, 14.0f0]
+		end
 
-	@testset "method comments require __init__" begin
-		@test strip(string(@doc(NoSubTypesOK))) == "base types can be documented"
-		@test strip(string(@doc(Fruit))) == "third base type"
-		@test strip(string(@doc(Orange))) == "derived types can also be documented"
+		@testset "method comments no longer requires __init__" begin
+			@test strip(string(@doc(NoSubTypesOK))) == "base types can be documented"
+			@test strip(string(@doc(Fruit))) == "third base type"
+			@test strip(string(@doc(Orange))) == "derived types can also be documented"
 
-		# @test_nothrows __init__()
-		#NOTE: unfortunately, the method declaration comment will be last one in the module
-		# @test replace(string(@doc M1.cost), "\n"=>"") == "has more thanone parta useful function"
+			# @test_nothrows __init__()
+			#NOTE: unfortunately, the method declaration comment will be last one in the module
+			# @test replace(string(@doc M1.cost), "\n"=>"") == "has more thanone parta useful function"
+		end
 	end
 end
 
+M1.runtime_test()
 #test that we can evaluate an expression in a shadow module, and get the signature as if it was evaluated in the parent module. This allows us to keep the parent module free of prototype functions, which can cause ambiguities.
 @testset "test createshadowmodule" begin
-	Core.eval(M1, :(function testfunc(fruit::M1.Fruit, unitprice::Float32)::Float32 end))
-	m1functype = typeof(M1.testfunc)
+	line = :(function testfunc(fruit::M1.Fruit, unitprice::Float32)::Float32 end)
+	m1func = Core.eval(M1, :(function testfunc end))
+	m1method = Core.eval(M1, line)
+
+	# the functype is tied to the module, so we need to get it from the base module
+	m1functype = typeof(m1func) 
+	@test m1functype === typeof(m1func)
+	@test m1functype isa DataType
+
+	origsig = Inherit.last_method_def(m1func).sig
 
 	Mshadow = Inherit.createshadowmodule(M1)
-	Core.eval(Mshadow, :(function testfunc(fruit::M1.Fruit, unitprice::Float32)::Float32 end))
+	shadowsig = Inherit.make_function_signature(Mshadow, m1functype, line)
 
-	sig1 = Inherit.last_method_def(M1.testfunc).sig
-	sig2 = Inherit.last_method_def(Mshadow.testfunc).sig
-	origsig = Inherit.set_sig_functype(M1, sig2, m1functype)
-	@test origsig == sig1
-
+	@test origsig == shadowsig
 end
-
 # :(struct Fruit<:B
 # 	weight::Float32
 # 	"a useful function"

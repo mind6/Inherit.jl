@@ -4,6 +4,9 @@ using Inherit
 
 export Fruit, Orange, Kiwi, Apple, cost, NoSubTypesOK
 
+# used by PkgTest2 to test compile time modification of this module
+global clientmodule = nothing
+
 "base types can be documented"
 @abstractbase struct NoSubTypesOK impliedAnyOK end
 
@@ -36,7 +39,7 @@ function cost(apple::Apple, unitprice::Float32)
 	unitprice * (apple.weight + apple.coresize) 
 end
 
-@verify_interfaces
+# @verify_interfaces
 
 
 

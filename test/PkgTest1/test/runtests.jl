@@ -45,7 +45,7 @@ end
 if Int(VERSION.minor) >= 11
 	using REPL
 end
-@testset "method comments require __init__" begin
+@testset "method comments work with compile time only evaluation" begin
 	
 	@test strip(string(@doc(NoSubTypesOK))) == "base types can be documented"
 	@test strip(string(@doc(Fruit))) == "third base type"
