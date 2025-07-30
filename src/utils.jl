@@ -201,40 +201,40 @@ function cleanup_shadowmodule(shadowmod::Module)
 	@debug "cleaned $cleaned properties from shadow module $shadowmod. $errored names could not be cleaned."
 end
 
-"""
-this is used by __init__ so we throw errror directly instead of returning a throw error exception.
-"""
-function populatefunctionsignature!(decl::MethodDeclaration, defmodule::Module, T::Symbol, decls::Vector{MethodDeclaration})
-	# we cannot privatize the name here because this is the actual function definition
-	f = Core.eval(defmodule, decl.line)		#evaluated in calling module without hygiene pass
-	# f = Base.eval(shadow, line)		#evaluated in calling module without hygiene pass
-	m = last_method_def(f)
-	# parent_f = __module__.eval(:(function $(m.name) end))	#declare just the function in the original module. this allows us to store the correct func type in the signature. It will not create any methods in the parent module.
-	# m_sig = set_sig_functype(__module__, m.sig, typeof(parent_f))
+# """
+# this is used by __init__ so we throw errror directly instead of returning a throw error exception.
+# """
+# function populatefunctionsignature!(decl::MethodDeclaration, defmodule::Module, T::Symbol, decls::Vector{MethodDeclaration})
+# 	# we cannot privatize the name here because this is the actual function definition
+# 	f = Core.eval(defmodule, decl.line)		#evaluated in calling module without hygiene pass
+# 	# f = Base.eval(shadow, line)		#evaluated in calling module without hygiene pass
+# 	m = last_method_def(f)
+# 	# parent_f = __module__.eval(:(function $(m.name) end))	#declare just the function in the original module. this allows us to store the correct func type in the signature. It will not create any methods in the parent module.
+# 	# m_sig = set_sig_functype(__module__, m.sig, typeof(parent_f))
 
-	# duplicate fields will be detected by the implementing struct. duplicate methods are detected by us.
-	if !all(p->p.sig != m.sig, decls)
-		# ret=reset_type() 	#clears everything we've seen so far about the type, so it isn't misused? how necessary is this?
-		# if ret !== nothing
-		# 	return ret
-		# end
+# 	# duplicate fields will be detected by the implementing struct. duplicate methods are detected by us.
+# 	if !all(p->p.sig != m.sig, decls)
+# 		# ret=reset_type() 	#clears everything we've seen so far about the type, so it isn't misused? how necessary is this?
+# 		# if ret !== nothing
+# 		# 	return ret
+# 		# end
 						
-		# errorstr = "duplicate method definition at $(__source__.file):$(__source__.line)"
-		errorstr = "method definition duplicates a previous definition: $(decl.line) "
-		throw(InterfaceError(errorstr))
-	end
+# 		# errorstr = "duplicate method definition at $(__source__.file):$(__source__.line)"
+# 		errorstr = "method definition duplicates a previous definition: $(decl.line) "
+# 		throw(InterfaceError(errorstr))
+# 	end
 
-	decl.sig = m.sig
-	@debug "interface specified by $T: $(decl.sig), age $(m.primary_world)"
+# 	decl.sig = m.sig
+# 	@debug "interface specified by $T: $(decl.sig), age $(m.primary_world)"
 
-	#NOTE: evaluating `@doc comment $(nameof(f))` here will only have a temporary effect. To persist documentation it must be done at the module __init__
-	# push!(DBM[identT], MethodDeclaration(MOD, T, line, comment, m_sig))
-	# comment = nothing
-	@debug "dangling method $m left behind due to function signature extraction"
-	modinfoT = getproperty(defmodule, H_COMPILETIMEINFO)
-	push!(modinfoT.methods_to_delete, m)
-	# Base.delete_method(m)	# `WARNING: method deletion during Module precompile may lead to undefined behavior` This warning shows up even when deleting in module __init__.
-end
+# 	#NOTE: evaluating `@doc comment $(nameof(f))` here will only have a temporary effect. To persist documentation it must be done at the module __init__
+# 	# push!(DBM[identT], MethodDeclaration(MOD, T, line, comment, m_sig))
+# 	# comment = nothing
+# 	@debug "dangling method $m left behind due to function signature extraction"
+# 	modinfoT = getproperty(defmodule, H_COMPILETIMEINFO)
+# 	push!(modinfoT.methods_to_delete, m)
+# 	# Base.delete_method(m)	# `WARNING: method deletion during Module precompile may lead to undefined behavior` This warning shows up even when deleting in module __init__.
+# end
 
 function make_function_signature(shadowmodule::Module, functype::DataType, line::Expr)::Type{<:Tuple}
 	f = Core.eval(shadowmodule, line)
@@ -271,9 +271,39 @@ function strip_self_reference(modulefullname::NTuple{N, Symbol}) where N
 	Tuple(types)
 end
 
-"
-This assumes the result will be evaluated inside basemodule. Prefixes are stripped from implmodule to handle situations when a module cannot follow a path that leads to itself.
-"
+"""
+	reducetype(expr, basemodule, basetype, implmodule, impltype)
+
+Transform type annotations in an expression by replacing valid supertype references with a specific 
+subtype. Given a subtyping specification (`impltype <: basetype`), this function identifies type 
+annotations in the expression that refer to the supertype and reduces them to the subtype, ensuring 
+the reduced type reference will resolve correctly.
+
+The prefix matching logic determines whether a qualified type reference actually points to the 
+intended supertype by checking if its module path is compatible with `basemodule`. This prevents 
+incorrect transformations when different modules contain types with the same name.
+
+Transformations applied:
+- `::Fruit` → `::M2.Orange` (unqualified basetype)
+- `::M1.Fruit` → `::M2.Orange` (when M1 matches or extends basemodule path)  
+- `::Main.M1.M1.Fruit` → `::M2.Orange` (nested module paths that resolve to basemodule)
+- `<:Fruit` → `<:M2.Orange` (type parameter bounds)
+
+Types are NOT transformed when:
+- Module qualifiers don't match basemodule (e.g., `::M2.M1.Fruit` when basemodule is `(:Main, :M1)`)
+- They appear as specific type parameters in parametric types (e.g., `Vector{Berry}`)
+- The module path cannot be resolved to the expected location
+
+This ensures the reduced type reference (`implmodule.impltype`) will be findable from the evaluation 
+context while avoiding false matches with same-named types in other modules.
+
+# Example
+```julia
+# Transform interface method to work with specific implementation
+reducetype(:(function f(x::M1.Fruit) end), (:Main, :M1), :Fruit, (:Main, :M2), :Orange)
+# → function f(x::M2.Orange) end
+```
+"""
 function reducetype(expr::Expr, basemodule::NTuple{N, Symbol}, basetype::Symbol, implmodule::NTuple{M, Symbol}, impltype::Symbol)::Expr where {N, M}
 	implmodule = strip_prefix(implmodule, basemodule)
 

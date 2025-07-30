@@ -91,7 +91,6 @@ M1.runtime_test()
 	Inherit.cleanup_shadowmodule(Mshadow)
 end
 
-Inherit.cleanup_shadowmodule(Main.__Inherit_jl_SHADOW_SUBMODULE2)
 # :(struct Fruit<:B
 # 	weight::Float32
 # 	"a useful function"

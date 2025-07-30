@@ -297,6 +297,8 @@ macro verify_interfaces()
 	modinfo = getproperty(__module__, H_COMPILETIMEINFO)
 	LOCALMOD = Base.fullname(__module__)
 	# LM_HANDLE  = Symbol(:__Inherit_jl_, LOCALMOD[end])
+
+	### for each supertype of some type defined in this module...
 	for (identS, decls) ∈ modinfo.methods
 		n_supertypes += 1
 		# __supertypemod__ = Inherit.getmodule(identS.modulefullname)
@@ -310,7 +312,9 @@ macro verify_interfaces()
 
 		### even with no subtypes, we need to go through decls to document interfaces
 		@debug "Inherit.jl requires interface definitions defined in base type $(Inherit.tostring(identS)) to be satisfied"
-		for decl in decls							# required method declarations
+
+		### for each required method declared by the supertype (including types it inherited)...
+		for decl in decls							
 			__defmodule__ = Inherit.FULLNAME_TO_MODULE[decl.defmodulename]
 			@assert decl.sig !== nothing
 			# if decl.sig === nothing
@@ -322,15 +326,15 @@ macro verify_interfaces()
 
 			### make sure the defmodule can access the implementing type
 			isforeign = __defmodule__ != __module__
-			if isforeign		#skips installing a handle if local module, so we don't litter a module with handles unnecessarily.
-				@debug "declaration was for $__defmodule__ but we're in $(__module__); not documenting"
-				Base.setproperty!(__defmodule__, H_TEMPORARY_CLIENTMODULE, __module__)
-			elseif decl.linecomment !== nothing 	#for local module, set the @doc for method declarations
-				# NOTE: no longer needed because declarations are now documented in process_method_declaration()
-				# @debug "documenting `$funcname` with `$(decl.linecomment)`"
-				# expr = :(@doc $(decl.linecomment) $funcname)
-				# Core.eval(__module__, expr)	#documents the method declaration not in the defining module, but the implementing module
-			end
+			# if isforeign		#skips installing a handle if local module, so we don't litter a module with handles unnecessarily.
+			# 	@debug "declaration was for $__defmodule__ but we're in $(__module__); not documenting"
+			# 	Base.setproperty!(__defmodule__, H_TEMPORARY_CLIENTMODULE, __module__)
+			# elseif decl.linecomment !== nothing 	#for local module, set the @doc for method declarations
+			# 	# NOTE: no longer needed because declarations are now documented in process_method_declaration()
+			# 	# @debug "documenting `$funcname` with `$(decl.linecomment)`"
+			# 	# expr = :(@doc $(decl.linecomment) $funcname)
+			# 	# Core.eval(__module__, expr)	#documents the method declaration not in the defining module, but the implementing module
+			# end
 
 			### do not require method table if there are no subtypes
 			if Base.isempty(SUBTYPES)	
@@ -338,13 +342,9 @@ macro verify_interfaces()
 				continue 
 			end
 
-			### the declaration function has already been imported, get its method table
-			func = nothing
-			mt = nothing
-			if isdefined(__defmodule__, funcname)
-				func = Base.getproperty(__defmodule__, funcname)
-				mt = Base.methods(func)
-			end
+			### get the method table of the declared function
+			func = Base.getproperty(__defmodule__, funcname)
+			mt = Base.methods(func)
 			if mt === nothing || Base.isempty(mt)
 				errorstr = "$(Base.nameof(__defmodule__)) does not define a method for `$funcname`, which is required by:\n$(decl.line)"
 				handle_error(errorstr)

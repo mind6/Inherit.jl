@@ -25,7 +25,7 @@ if Int(VERSION.minor) >= 11
 	using REPL
 end
 
-@testset "PkgTest1" begin
+@testset verbose=true "PkgTest1" begin
 	@testset "loading performance" begin
 		@info "loaded PkgTest1 in $(t.time) seconds"
 		@test t.time < 0.0025	# normal times are 1.5ms in julia 1.11, 1.8ms in Julia 1.10 LTS

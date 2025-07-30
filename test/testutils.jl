@@ -47,7 +47,7 @@ end
 
 	@test Inherit.hasemptybody(code_typed(f1)[1].first)	#prototype never implemented
 	@test !Inherit.hasemptybody(code_typed(f2)[1].first) #has some implementation
-	@test !Inherit.hasemptybody(code_typed(f3)[1].first) #minimal implementation is recognized
+	@test Inherit.hasemptybody(code_typed(f3)[1].first) #equivalent to f1
 end
 
 @testset "utils tests" begin
