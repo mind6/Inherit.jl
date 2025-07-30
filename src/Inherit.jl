@@ -107,6 +107,7 @@ It must contain strings and expressions that describe the types, but not runtime
 	# (modulefullname,funcname) pairs that have been auto imported
 	imported::Set{TypeIdentifier} = Set{TypeIdentifier}()
 
+
 	# methods which we added during compilation of the current module (to get signatures of functions, both defined locally and imported from foreign modules) to be deleted during __init__ (post precompilation)
 	methods_to_delete::Vector{Method} = Vector{Method}()
 
@@ -119,7 +120,10 @@ end
 const H_COMPILETIMEINFO::Symbol = :__Inherit_jl_COMPILETIMEINFO
 
 # place holder in a user module A which temporarily imports a client module B , because B wants to evaluate function signatures in A with types available in B.
-const H_TEMPORARY_CLIENTMODULE::Symbol = :__Inherit_jl_TEMPORARY_CLIENTMODULE
+# const H_TEMPORARY_CLIENTMODULE::Symbol = :__Inherit_jl_TEMPORARY_CLIENTMODULE
+
+# We use exactly one shadow module per user module of Inherit.jl. We try to import everything needed to evaluate function signatures into this shadow module. This is preferred over creating potentially hundreds of unique shadow modules. If using a single evaluation module won't work for some feature, we simply won't support that feature.
+const H_SHADOW_SUBMODULE::Symbol = :__Inherit_jl_SHADOW_SUBMODULE
 
 #NOTE: this is a runtime map where user modules self-register with Inherit.jl (both when isprecompiling() is false and when it is true).
 const FULLNAME_TO_MODULE = Dict{Tuple, Module}()	#points from fullname(mod) to the mod. 
@@ -146,9 +150,9 @@ function setup_module_db(mod::Module)
 		Core.eval(mod, quote
 			const $H_COMPILETIMEINFO = Inherit.CompiletimeModuleInfo() #this being type stable is important for module __init__ speed
 		end)
-		Core.eval(mod, quote
-			global $H_TEMPORARY_CLIENTMODULE::Union{Module, Nothing} = nothing
-		end)
+		# Core.eval(mod, quote
+		# 	global $H_TEMPORARY_CLIENTMODULE::Union{Module, Nothing} = nothing
+		# end)
 
 		initexp = create_module__init__()
 		Core.eval(mod, initexp) # NOTE: do not use rmlines on this eval	end

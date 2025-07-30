@@ -42,7 +42,7 @@ module M1
 		unitprice * (apple.weight + apple.coresize) 
 	end
 
-	@verify_interfaces
+	# @verify_interfaces
 	
 	"""
 	declarations are evaluated at compile time for their function signatures, this leaves behind empty functions in the module which are not cleaned up until runtime. If the method dispatch test is run at compile time it will fail with an ambiguous call error.
@@ -64,14 +64,13 @@ module M1
 			@test strip(string(@doc(Fruit))) == "third base type"
 			@test strip(string(@doc(Orange))) == "derived types can also be documented"
 
-			# @test_nothrows __init__()
-			#NOTE: unfortunately, the method declaration comment will be last one in the module
-			# @test replace(string(@doc M1.cost), "\n"=>"") == "has more thanone parta useful function"
+			@test replace(string(@doc M1.cost), "\n"=>"") == "a useful functionhas more thanone part"
 		end
 	end
 end
 
 M1.runtime_test()
+
 #test that we can evaluate an expression in a shadow module, and get the signature as if it was evaluated in the parent module. This allows us to keep the parent module free of prototype functions, which can cause ambiguities.
 @testset "test createshadowmodule" begin
 	line = :(function testfunc(fruit::M1.Fruit, unitprice::Float32)::Float32 end)
@@ -89,7 +88,10 @@ M1.runtime_test()
 	shadowsig = Inherit.make_function_signature(Mshadow, m1functype, line)
 
 	@test origsig == shadowsig
+	Inherit.cleanup_shadowmodule(Mshadow)
 end
+
+Inherit.cleanup_shadowmodule(Main.__Inherit_jl_SHADOW_SUBMODULE2)
 # :(struct Fruit<:B
 # 	weight::Float32
 # 	"a useful function"

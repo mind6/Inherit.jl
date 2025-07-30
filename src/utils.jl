@@ -143,13 +143,20 @@ end
 # 	curmod
 # end
 
+# const SHADOW_MODULE_CONST_SYMBOLS = Set{Symbol}([Symbol("#eval"), Symbol("#include"), :__Inherit_jl_SHADOW_SUBMODULE, :eval, :include])
 "
 Creates a new module that contains (i.e. imports) only the properties of `basemodule` which are Types and Modules (i.e. excluding any functions). You can evaluate method declarations in this module to get the signature, without modifying `basemodule` itself
+
+`basemodule` is the module whose properties we want to import into the shadow module. This module must be the one we're precompiling, so it isn't closed to eval.
 "
-function createshadowmodule(basemodule::Module)
-	# newmod = Module(:myshadow, true, true)
-	newmod = Module(:anonymous, false, false)
-	Core.eval(newmod, :(__precompile__(false) ))
+function createshadowmodule(basemodule::Module)::Module
+	if isdefined(basemodule, H_SHADOW_SUBMODULE)
+		@debug "Shadow module $(H_SHADOW_SUBMODULE) already exists"
+	else
+		Core.eval(basemodule, :(module $(H_SHADOW_SUBMODULE) end))
+	end
+
+	shadowmod = getproperty(basemodule, H_SHADOW_SUBMODULE)
 
 	### build a list of functions and extract their types. This helps us weed out properties like Symbol("#cost") which contains the type of the `cost` function
 	functypes = Set{DataType}()
@@ -168,15 +175,30 @@ function createshadowmodule(basemodule::Module)
 		p = getproperty(basemodule, name)
 		if p isa Union{Type, Module} && p ∉ functypes
 			# @show name p
-			Core.eval(newmod, :(global $name = $p))
-			# setproperty!(newmod, name, p)
+			if isdefined(shadowmod, name)
+				setproperty!(shadowmod, name, p)
+			else
+				Core.eval(shadowmod, :(global $name = $p))
+			end
 		end
 	end
 
-	#adds the ability to invoke `newmod.eval(expr)` by passing the call to `Base.eval``
-	# Base.eval(newmod, :(function eval(x) Base.eval(@__MODULE__, x) end))
+	shadowmod
+end
 
-	newmod
+"Frees up as much memory used by a submodule as possible by assigning everything to nothing. Base usage of about 3.2kb tends to be left behind."
+function cleanup_shadowmodule(shadowmod::Module)
+	cleaned = 0
+	errored = 0
+	for name in names(shadowmod; imported=true, all=true)
+		try
+			setproperty!(shadowmod, name, nothing)
+			cleaned += 1
+		catch e
+			errored += 1
+		end
+	end
+	@debug "cleaned $cleaned properties from shadow module $shadowmod. $errored names could not be cleaned."
 end
 
 """
@@ -201,6 +223,7 @@ function populatefunctionsignature!(decl::MethodDeclaration, defmodule::Module, 
 		errorstr = "method definition duplicates a previous definition: $(decl.line) "
 		throw(InterfaceError(errorstr))
 	end
+
 	decl.sig = m.sig
 	@debug "interface specified by $T: $(decl.sig), age $(m.primary_world)"
 
