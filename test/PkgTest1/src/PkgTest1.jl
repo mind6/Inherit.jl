@@ -39,8 +39,7 @@ function cost(apple::Apple, unitprice::Float32)
 	unitprice * (apple.weight + apple.coresize) 
 end
 
-# @verify_interfaces
-
+@verify_interfaces
 
 
 # raninit::Bool = false

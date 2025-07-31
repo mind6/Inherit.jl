@@ -6,4 +6,5 @@ version = "0.1.0"
 [deps]
 Inherit = "341b8389-5eed-42ab-a01e-622c6bedf032"
 PkgTest1 = "75041775-571a-4e75-8a15-6eeecd70cfb9"
+PkgTest2 = "26174172-8916-43b6-ab8f-c89589f490e3"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

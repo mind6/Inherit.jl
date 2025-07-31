@@ -485,3 +485,18 @@ function build_import_expr(pkgnames::Symbol...)::Expr
     import_args = [Expr(:., pkg) for pkg in pkgnames]
     Expr(:import, import_args...)
 end
+
+function find_supertype_module(currenttype::DataType, identS::TypeIdentifier)::Module
+	ctmod = currenttype.name.module
+	ctname = currenttype.name.name
+	if identS.modulefullname == fullname(ctmod) && identS.basename == ctname
+		@debug "found supertype $ctmod.$ctname"
+		return ctmod
+	else
+		st = supertype(currenttype)
+		if st === Any
+			error("$identS is not a supertype of $basetype")
+		end
+		return find_supertype_module(st, identS)
+	end
+end

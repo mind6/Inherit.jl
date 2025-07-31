@@ -172,7 +172,7 @@ Process a method declaration in the type body.
 - Declares function prototype in the current module
 - Adds method declaration to the database
 """
-function process_method_declaration(current_module, type_name, ident, line, comment)
+function process_method_declaration(current_module::Module, type_name::Symbol, ident::TypeIdentifier, line::Expr, comment::Union{Nothing, String})
 	if !@capture(line, (function funcname_(__) body__ end) | (function funcname_(__)::__ body__ end))
 		errorstr = "Cannot recognize $line as either a constructor or a valid prototype definition."
 		return :(throw(InterfaceError($errorstr)))

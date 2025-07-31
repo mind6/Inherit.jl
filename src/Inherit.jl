@@ -51,14 +51,14 @@ TypeSpec = @NamedTuple{
 	fields::Vector{Expr}		#expressions that define the type's fields (including those inherited from supertype)	
 }
 
-mutable struct MethodDeclaration 
+struct MethodDeclaration 
 	defmodulename::Tuple 	#module where the declaration was originally defined. helps with line reduction
 	defbasename::Symbol		#base type name where the declaration was originally defined. helps with line reduction
 	line::Expr	 				#the original statement AST
 	linecomment::Union{Nothing, String, Expr}		#String or Expr(:string ...) that documents the line
 	funcname::Symbol			#name of function. must be determined at type definition time. It cannot be extracted from sig because it may be empty until module __init__.
 	functype::DataType			#the original functype evaluated in original module. This is key to signature checking, and it results from the only evaluation we make into a non-temporary module.
-	sig::Union{Nothing, Type{<:Tuple}}		#the original sig evaluated in original module
+	sig::Type{<:Tuple}		#the original sig evaluated in original module
 end
 
 struct ConstructorDefinition 
@@ -108,11 +108,11 @@ It must contain strings and expressions that describe the types, but not runtime
 	imported::Set{TypeIdentifier} = Set{TypeIdentifier}()
 
 
-	# methods which we added during compilation of the current module (to get signatures of functions, both defined locally and imported from foreign modules) to be deleted during __init__ (post precompilation)
-	methods_to_delete::Vector{Method} = Vector{Method}()
+	# # methods which we added during compilation of the current module (to get signatures of functions, both defined locally and imported from foreign modules) to be deleted during __init__ (post precompilation)
+	# methods_to_delete::Vector{Method} = Vector{Method}()
 
-	# user functions to be called at the end of __init__ (after Inherit.jl completes self registration)
-	postinit::Vector{Function} = Vector()
+	# # user functions to be called at the end of __init__ (after Inherit.jl completes self registration)
+	# postinit::Vector{Function} = Vector()
 
 end
 
@@ -154,8 +154,8 @@ function setup_module_db(mod::Module)
 		# 	global $H_TEMPORARY_CLIENTMODULE::Union{Module, Nothing} = nothing
 		# end)
 
-		initexp = create_module__init__()
-		Core.eval(mod, initexp) # NOTE: do not use rmlines on this eval	end
+		# initexp = create_module__init__()
+		# Core.eval(mod, initexp) # NOTE: do not use rmlines on this eval	end
 	end
 end
 
@@ -166,7 +166,7 @@ If the supertype is not an @abstractbase, returns (nothing, modinfo).
 
 If the supertype is defined in a foreign module, the CompiletimeModuleInfo will contain the foreign module's CompiletimeModuleInfo.
 """
-function process_supertype(currentmod::Module, S::Union{Symbol, Expr})::Tuple{Union{Nothing, TypeIdentifier}, Union{Nothing, CompiletimeModuleInfo}}
+function process_supertype(currentmod::Module, S::Union{Symbol, Expr})::Tuple{Union{Nothing, TypeIdentifier}, CompiletimeModuleInfo}
 	objS = Core.eval(currentmod, S)		
 	moduleS = objS.name.module		#whichever module the supertype was defined in
 	nameS = objS.name.name			
@@ -177,6 +177,11 @@ function process_supertype(currentmod::Module, S::Union{Symbol, Expr})::Tuple{Un
 		return nothing, nothing
 	end	
 	modinfo = getproperty(moduleS, H_COMPILETIMEINFO)	#this modinfo of the supertype's module; it can be the currentmod or a foreign module
+	@show fullname(moduleS), fullname(currentmod)
+	@show typeof(modinfo)
+	@show CompiletimeModuleInfo
+	@assert modinfo isa CompiletimeModuleInfo
+
 	if !haskey(modinfo.localtypespec, nameS)
 		@debug "supertype $nameS not found in $moduleS -- It needs to have been declared with @abstractbase"
 		return nothing, modinfo
@@ -187,7 +192,7 @@ function process_supertype(currentmod::Module, S::Union{Symbol, Expr})::Tuple{Un
 	for decl in modinfo.methods[identS]
 		if decl.defmodulename == currentfullname continue end	#no need to import
 
-		funcname = getfuncname(decl)
+		funcname = decl.funcname
 		identF = TypeIdentifier((decl.defmodulename, funcname))
 
 		if !isdefined(currentmod, funcname)
@@ -296,6 +301,7 @@ macro verify_interfaces()
 	end
 	modinfo = getproperty(__module__, H_COMPILETIMEINFO)
 	LOCALMOD = Base.fullname(__module__)
+	shadowmodule = Inherit.createshadowmodule(__module__)
 	# LM_HANDLE  = Symbol(:__Inherit_jl_, LOCALMOD[end])
 
 	### for each supertype of some type defined in this module...
@@ -307,6 +313,13 @@ macro verify_interfaces()
 		# 	setproperty!(__supertypemod__, LM_HANDLE, @__MODULE__)
 		# end
 		SUBTYPES = modinfo.subtypes[identS]
+		if Base.isempty(SUBTYPES)	
+			@debug "$(Inherit.tostring(identS)) has no subtypes; not requiring method implementations"
+			continue 
+		end
+		__defmodule__ = Inherit.find_supertype_module(
+			getproperty(__module__, SUBTYPES[1]), identS)
+
 		n_subtypes += Base.length(SUBTYPES)
 		n_signatures += Base.length(decls)
 
@@ -315,14 +328,14 @@ macro verify_interfaces()
 
 		### for each required method declared by the supertype (including types it inherited)...
 		for decl in decls							
-			__defmodule__ = Inherit.FULLNAME_TO_MODULE[decl.defmodulename]
+			# __defmodule__ = Inherit.FULLNAME_TO_MODULE[decl.defmodulename]
 			@assert decl.sig !== nothing
 			# if decl.sig === nothing
 			# 	ret = Inherit.populatefunctionsignature!(decl, __defmodule__, identS.basename,  decls)
 			# 	@assert decl.sig !== nothing
 			# end
 
-			funcname = Inherit.getfuncname(decl)
+			funcname = decl.funcname
 
 			### make sure the defmodule can access the implementing type
 			isforeign = __defmodule__ != __module__
@@ -337,10 +350,6 @@ macro verify_interfaces()
 			# end
 
 			### do not require method table if there are no subtypes
-			if Base.isempty(SUBTYPES)	
-				@debug "$(Inherit.tostring(identS)) has no subtypes; not requiring method implementations"
-				continue 
-			end
 
 			### get the method table of the declared function
 			func = Base.getproperty(__defmodule__, funcname)
@@ -363,18 +372,18 @@ macro verify_interfaces()
 				@show decl
 				reducedline = Inherit.reducetype(decl.line, 
 					decl.defmodulename, decl.defbasename, 
-					isforeign ? (H_TEMPORARY_CLIENTMODULE,) : LOCALMOD, subtype)
+					LOCALMOD, subtype)
 				@debug "evaluating $reducedline"
 
 				###we rename the reduced function before evaluating to get the signature, in order to prevent overwriting existing implementing method
 				reducedline = Inherit.privatize_funcname(reducedline)
-				f = __defmodule__.eval(reducedline) # TODO: this is the big blocker of our precompile only verification -- we cannot evaulate into a closed foreign module __defmodule__
+				f = Core.eval(shadowmodule, reducedline) # TODO: this is the big blocker of our precompile only verification -- we cannot evaulate into a closed foreign module __defmodule__
 				reducedmethod = Inherit.last_method_def(f)
 				#restore the functype signature from the original declaration
 				reducedsig = Inherit.set_sig_functype(reducedmethod.sig, decl.sig.types[1])
 				#this is safe to delete because it's on the renamed function
 				@debug "dangling method $reducedmethod left behind due to function signature replacement"
-				push!(modinfo.methods_to_delete, reducedmethod)
+				# push!(modinfo.methods_to_delete, reducedmethod)
 				# Base.delete_method(reducedmethod)  #NOTE: it's okay to delete_method here because we're in the module init not the precompilation phase.						
 
 				for m in mt				#methods implemented on function of required sig
@@ -399,6 +408,9 @@ macro verify_interfaces()
 			#FIXME: report "Unreachable reached at" error with label here
 		end #end decls
 	end #end DMB
+
+	Inherit.cleanup_shadowmodule(shadowmodule)
+
 	summarystr = """Inherit.jl: processed $(join(LOCALMOD, '.')) with $(Inherit.singular_or_plural(n_supertypes, "supertype")) having $(Inherit.singular_or_plural(n_signatures, "method requirement")). $(Inherit.singular_or_plural(n_subtypes, "subtype was", "subtypes were")) checked with $(Inherit.singular_or_plural(n_errors, "missing method"))."""
 	@info summarystr
 end 

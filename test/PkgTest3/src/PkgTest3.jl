@@ -1,11 +1,13 @@
 module PkgTest3
 using Inherit, Test
-using PkgTest1
+using PkgTest2
 
-@abstractbase struct Fruit
-	weight::Float32
-	function cost_old(fruit::Fruit, unitprice::Float32)::Float32 end
-	function cost_old(fruit::Fruit, unitprice::Float32)::Float32 end
-end
+# @abstractbase struct Strawberry end
+
+# # @implement struct Strawberry <: PkgTest2.SummerFruit end
+# # 	color::String
+# # end
+
+# @verify_interfaces
 
 end # module PkgTest3

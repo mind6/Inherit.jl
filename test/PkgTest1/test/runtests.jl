@@ -5,7 +5,7 @@ cd(joinpath(@__DIR__, ".."))
 ENV["JULIA_DEBUG"] = nothing
 using Pkg
 Pkg.activate(".")
-Pkg.resolve()
+Pkg.develop(path=joinpath(pwd(), "..", "..",))
 
 using Distributed
 
@@ -28,7 +28,7 @@ end
 @testset verbose=true "PkgTest1" begin
 	@testset "loading performance" begin
 		@info "loaded PkgTest1 in $(t.time) seconds"
-		@test t.time < 0.0025	# normal times are 1.5ms in julia 1.11, 1.8ms in Julia 1.10 LTS
+		@test t.time < 0.004	# normal times are 1.5ms in julia 1.11, 1.8ms in Julia 1.10 LTS. added 1ms after adding shadow module
 
 		if Int(VERSION.minor) >= 11
 			@test t.recompile_time == 0	# requires Julia 1.11

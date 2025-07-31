@@ -7,6 +7,10 @@ using PkgTest1
 	weight2::Float32
 	function cost(fruit::Fruit, unitprice::Float32)::Float32 end
 end
+@abstractbase struct SummerFruit
+	season::String
+	function isripe(fruit::SummerFruit)::Bool end
+end
 
 @implement struct Orange <: Fruit end
 @implement struct Orange1 <: PkgTest1.Fruit end
@@ -28,7 +32,7 @@ end
 
 @compiletime_modification
 
-# @verify_interfaces
+@verify_interfaces
 
 function test()
 	@testset "implement @abstractbase from another module" begin

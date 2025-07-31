@@ -42,7 +42,7 @@ module M1
 		unitprice * (apple.weight + apple.coresize) 
 	end
 
-	# @verify_interfaces
+	@verify_interfaces
 	
 	"""
 	declarations are evaluated at compile time for their function signatures, this leaves behind empty functions in the module which are not cleaned up until runtime. If the method dispatch test is run at compile time it will fail with an ambiguous call error.
@@ -126,6 +126,66 @@ module M2
 		Inherit.reportlevel = ThrowError
 		@test_nothrows M2.__init__()
 		# @test_throws SettingsError Inherit.reportlevel = SkipInitCheck
+	end
+end
+
+@testset "find_supertype_module" begin
+    # Test for cross-module supertype
+    @test Inherit.find_supertype_module(M2.Orange1, Inherit.TypeIdentifier(((:Main, :M1), :Fruit))) === M1
+
+    # Test for same-module supertype
+    @test Inherit.find_supertype_module(M2.Orange, Inherit.TypeIdentifier(((:Main, :M2), :Fruit))) === M2
+    @test Inherit.find_supertype_module(M1.Orange, Inherit.TypeIdentifier(((:Main, :M1), :Fruit))) === M1
+end
+
+@testset "additional M1 and M2 tests" begin
+	# Test field inheritance in M1
+	@testset "M1 field inheritance" begin
+		 orange = M1.Orange(1.5f0)
+		 kiwi = M1.Kiwi(0.8f0)
+		 apple = M1.Apple(2.0f0, 3)
+		 
+		 @test orange.weight ≈ 1.5f0
+		 @test kiwi.weight ≈ 0.8f0
+		 @test apple.weight ≈ 2.0f0
+		 @test apple.coresize == 3
+	end
+
+	# Test method dispatch in M1
+	@testset "M1 method dispatch" begin
+		 orange = M1.Orange(1.5f0)
+		 kiwi = M1.Kiwi(0.8f0)
+		 apple = M1.Apple(2.0f0, 3)
+		 
+		 @test M1.cost(orange, 2.0f0) ≈ 3.0f0
+		 @test M1.cost(kiwi, 3.0f0) ≈ 2.4f0
+		 @test M1.cost(apple, 1.5f0) ≈ (2.0f0 + 3) * 1.5f0
+	end
+
+	# Test cross-module field inheritance
+	@testset "M2 field inheritance" begin
+		 orange = M2.Orange(1.2f0)
+		 orange1 = M2.Orange1(0.9f0)
+		 
+		 @test orange.weight2 ≈ 1.2f0
+		 @test orange1.weight ≈ 0.9f0
+	end
+
+	# Test cross-module method dispatch
+	@testset "M2 method dispatch" begin
+		 orange = M2.Orange(1.2f0)
+		 orange1 = M2.Orange1(0.9f0)
+		 
+		 @test M2.cost(orange, 2.0f0) ≈ 2.4f0
+		 @test M1.cost(orange1, 2.0f0) ≈ 1.8f0
+	end
+
+	# Test type relationships
+	@testset "Type relationships" begin
+		 @test M1.Orange <: M1.Fruit
+		 @test M2.Orange <: M2.Fruit
+		 @test M2.Orange1 <: M1.Fruit
+		 @test !(M2.Orange <: M1.Fruit)
 	end
 end
 
@@ -411,3 +471,4 @@ module M11
 	end
 
 end
+
