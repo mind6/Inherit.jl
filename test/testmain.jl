@@ -122,10 +122,6 @@ module M2
 	@testset "implement @abstractbase from another module" begin
 		@test fieldnames(Orange) == (:weight2,)
 		@test fieldnames(Orange1) == (:weight,)
-
-		Inherit.reportlevel = ThrowError
-		@test_nothrows M2.__init__()
-		# @test_throws SettingsError Inherit.reportlevel = SkipInitCheck
 	end
 end
 
@@ -202,22 +198,13 @@ module M3
 		item.weight * unitprice
 	end
 	
-	@postinit function __myinit1__()
-		@info "first post init for $(@__MODULE__)"
-	end
-
-	@postinit function __myinit2__()
-		@info "second post init for $(@__MODULE__)"
-	end
 	@verify_interfaces
 
 	@testset "implement only; auto imported function" begin
 		#since M3 contains `using M1`, its cost function is identical to that of M1
 		@test all(isequal.(methods(M1.cost), methods(M3.cost)))		 
 
-		Inherit.reportlevel = ThrowError
 		@test parentmodule(cost) == M1
-		@test_nothrows __init__()
 	end
 
 end
@@ -237,7 +224,6 @@ multilevel inheritance
 module M4
 	using Inherit, Test, ..M1
 	export Berry
-	Inherit.reportlevel = SkipInitCheck
 
 	@abstractbase struct Berry <: M1.Fruit
 		cluster::Int

@@ -168,8 +168,8 @@ If the supertype is defined in a foreign module, the CompiletimeModuleInfo will 
 """
 function process_supertype(currentmod::Module, S::Union{Symbol, Expr})::Tuple{Union{Nothing, TypeIdentifier}, CompiletimeModuleInfo}
 	objS = Core.eval(currentmod, S)		
-	moduleS = objS.name.module		#whichever module the supertype was defined in
-	nameS = objS.name.name			
+	moduleS = parentmodule(objS)		#whichever module the supertype was defined in
+	nameS = nameof(objS)			
 	identS = TypeIdentifier((fullname(moduleS), nameS))
 
 	if !isdefined(moduleS, :__Inherit_jl_COMPILETIMEINFO)
@@ -178,9 +178,6 @@ function process_supertype(currentmod::Module, S::Union{Symbol, Expr})::Tuple{Un
 	end	
 	modinfo = getproperty(moduleS, H_COMPILETIMEINFO)	#this modinfo of the supertype's module; it can be the currentmod or a foreign module
 	@show fullname(moduleS), fullname(currentmod)
-	@show typeof(modinfo)
-	@show CompiletimeModuleInfo
-	@assert modinfo isa CompiletimeModuleInfo
 
 	if !haskey(modinfo.localtypespec, nameS)
 		@debug "supertype $nameS not found in $moduleS -- It needs to have been declared with @abstractbase"
@@ -227,58 +224,58 @@ __Mutability__ must be the same as the supertype's mutability.
 include("refactored_abstractbase.jl")
 
 
-function create_module__init__()::Expr
-	# TODO: this was hard won knowledge; implement it in some function?
-	# ### Find whether Inherit module is in Debug logging level. If it is, error messages will be printed in place of exceptions, because exceptions cannot be caught from module __init__ 
-	# init_throwsexception = let
-	# 	log_data = Base.CoreLogging.process_logmsg_exs(Inherit, nothing, nothing, Debug, "hello")
-	# 	logger = Base.CoreLogging.current_logger_for_env(Debug, log_data._group, log_data._module)
+# function create_module__init__()::Expr
+# 	# TODO: this was hard won knowledge; implement it in some function?
+# 	# ### Find whether Inherit module is in Debug logging level. If it is, error messages will be printed in place of exceptions, because exceptions cannot be caught from module __init__ 
+# 	# init_throwsexception = let
+# 	# 	log_data = Base.CoreLogging.process_logmsg_exs(Inherit, nothing, nothing, Debug, "hello")
+# 	# 	logger = Base.CoreLogging.current_logger_for_env(Debug, log_data._group, log_data._module)
 
-	# 	# @show @macroexpand @debug "hello there"
-	# 	# @show state = Base.CoreLogging.current_logstate()  This doesn't return the correct logger for Inherit
-	# 	logger === nothing || !Logging.shouldlog(logger, Debug, Inherit, :Inherit, nothing)
-	# end
-	# if (!init_throwsexception)
-	# 	@warn "any exceptions will show as error messages only, to allow tests to complete" init_throwsexception
-	# end
+# 	# 	# @show @macroexpand @debug "hello there"
+# 	# 	# @show state = Base.CoreLogging.current_logstate()  This doesn't return the correct logger for Inherit
+# 	# 	logger === nothing || !Logging.shouldlog(logger, Debug, Inherit, :Inherit, nothing)
+# 	# end
+# 	# if (!init_throwsexception)
+# 	# 	@warn "any exceptions will show as error messages only, to allow tests to complete" init_throwsexception
+# 	# end
 
 
-	modinfo_node = QuoteNode(H_COMPILETIMEINFO)
-	"
-	In the user module's init, we need to throw exceptions directly, since there's no eval on the return value.
+# 	modinfo_node = QuoteNode(H_COMPILETIMEINFO)
+# 	"
+# 	In the user module's init, we need to throw exceptions directly, since there's no eval on the return value.
 
-	NOTE that only the quoted expression has access to the correct @__MODULE__. Any utility functions of Inherit.jl must receive this as a parameter, instead of invoking @__MODULE__ directly.
+# 	NOTE that only the quoted expression has access to the correct @__MODULE__. Any utility functions of Inherit.jl must receive this as a parameter, instead of invoking @__MODULE__ directly.
 
-	NOTE that we should specify standard library functions explicitly, so we don't inadvertently invoke functions defined locally in the init's module.
-	"
-	quote function __init__()
-		if isprecompiling() # this is only needed during precompilation to find the supertype's module object. It adds 40ms to module load time just by itself
-			Inherit.FULLNAME_TO_MODULE[Base.fullname(@__MODULE__)] = @__MODULE__	
-		end
-		# if !isdefined(@__MODULE__, $modinfo_node)
-		# 	println("I don't require any definitions")
-		# 	return
-		# end
-		modinfo = getproperty(@__MODULE__, $modinfo_node)
-		# # @debug "$(@__MODULE__) contains module entry $modinfo"
+# 	NOTE that we should specify standard library functions explicitly, so we don't inadvertently invoke functions defined locally in the init's module.
+# 	"
+# 	quote function __init__()
+# 		if isprecompiling() # this is only needed during precompilation to find the supertype's module object. It adds 40ms to module load time just by itself
+# 			Inherit.FULLNAME_TO_MODULE[Base.fullname(@__MODULE__)] = @__MODULE__	
+# 		end
+# 		# if !isdefined(@__MODULE__, $modinfo_node)
+# 		# 	println("I don't require any definitions")
+# 		# 	return
+# 		# end
+# 		modinfo = getproperty(@__MODULE__, $modinfo_node)
+# 		# # @debug "$(@__MODULE__) contains module entry $modinfo"
 
-		# # if Inherit.isprecompiling()	#Can't use eval when precompiling. Precompilation "closes" a package. If Pkg2 loads precompiled Pkg1, Pkg1.__init__() will fire, which fails when trying to eval into closed Pkg1.
-		# # 	@goto process_postinit 
-		# # end
-		# # @label process_postinit
-		# println("processing $(Base.length(modinfo.postinit)) module inits...")
-		if !isprecompiling()
-			for m in modinfo.methods_to_delete 
-				Base.delete_method(m)
-			end
-		end
+# 		# # if Inherit.isprecompiling()	#Can't use eval when precompiling. Precompilation "closes" a package. If Pkg2 loads precompiled Pkg1, Pkg1.__init__() will fire, which fails when trying to eval into closed Pkg1.
+# 		# # 	@goto process_postinit 
+# 		# # end
+# 		# # @label process_postinit
+# 		# println("processing $(Base.length(modinfo.postinit)) module inits...")
+# 		if !isprecompiling()
+# 			for m in modinfo.methods_to_delete 
+# 				Base.delete_method(m)
+# 			end
+# 		end
 
-		for f in modinfo.postinit 
-			f()
-		end
+# 		for f in modinfo.postinit 
+# 			f()
+# 		end
 
-	end end 	#end quote
-end
+# 	end end 	#end quote
+# end
 
 """
 This verifies the known interfaces of the current module. It should be placed at the end of the module, after all other Inherit macros have been executed.
@@ -415,26 +412,26 @@ macro verify_interfaces()
 	@info summarystr
 end 
 
-"
-Requires a single function definition expression.
+# "
+# Requires a single function definition expression.
 
-The function will be executed after Inherit.jl verfies interfaces. You may have any number of @postinit blocks; they will execute in the order in which they were defined.
+# The function will be executed after Inherit.jl verfies interfaces. You may have any number of @postinit blocks; they will execute in the order in which they were defined.
 
-The function name must be different from `__init__`, or it will overwrite Inherit.jl interface verification code. Furthermore, you module must not contain any function named `__init__`. Initialization code must use this macro with a changed name, or with an anonymous function. For example, 
+# The function name must be different from `__init__`, or it will overwrite Inherit.jl interface verification code. Furthermore, you module must not contain any function named `__init__`. Initialization code must use this macro with a changed name, or with an anonymous function. For example, 
 
-	@postinit function __myinit__() ... end
-	@postinit () -> begin ... end
+# 	@postinit function __myinit__() ... end
+# 	@postinit () -> begin ... end
 
-"
-macro postinit(ex)
-	@assert MacroTools.isdef(ex) "function definition expected"
-	setup_module_db(__module__)
-	modinfo = getproperty(__module__, H_COMPILETIMEINFO)
-	push!(modinfo.postinit, Core.eval(__module__, ex))
-	@debug "module entry $modinfo added under $__module__"
+# "
+# macro postinit(ex)
+# 	@assert MacroTools.isdef(ex) "function definition expected"
+# 	setup_module_db(__module__)
+# 	modinfo = getproperty(__module__, H_COMPILETIMEINFO)
+# 	push!(modinfo.postinit, Core.eval(__module__, ex))
+# 	@debug "module entry $modinfo added under $__module__"
 
-	nothing
-end
+# 	nothing
+# end
 
 "
 Creates a Julia `struct` or `mutable struct` type which contains all the fields of its supertype. Method interfaces declared (and inherited) by the supertype are required to be implemented.

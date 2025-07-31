@@ -7,7 +7,7 @@ using PkgTest1
 	weight2::Float32
 	function cost(fruit::Fruit, unitprice::Float32)::Float32 end
 end
-@abstractbase struct SummerFruit
+@abstractbase struct SummerFruit <: PkgTest1.Fruit
 	season::String
 	function isripe(fruit::SummerFruit)::Bool end
 end

@@ -4,10 +4,10 @@ using PkgTest2
 
 # @abstractbase struct Strawberry end
 
-# # @implement struct Strawberry <: PkgTest2.SummerFruit end
-# # 	color::String
-# # end
+@implement struct Strawberry <: PkgTest2.SummerFruit
+	color::String
+end
 
-# @verify_interfaces
+@verify_interfaces
 
 end # module PkgTest3
