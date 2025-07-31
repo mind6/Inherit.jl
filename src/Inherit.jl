@@ -177,7 +177,7 @@ function process_supertype(currentmod::Module, S::Union{Symbol, Expr})::Tuple{Un
 		return nothing, nothing
 	end	
 	modinfo = getproperty(moduleS, H_COMPILETIMEINFO)	#this modinfo of the supertype's module; it can be the currentmod or a foreign module
-	@show fullname(moduleS), fullname(currentmod)
+	# @show fullname(moduleS), fullname(currentmod)
 
 	if !haskey(modinfo.localtypespec, nameS)
 		@debug "supertype $nameS not found in $moduleS -- It needs to have been declared with @abstractbase"

@@ -486,7 +486,8 @@ function build_import_expr(pkgnames::Symbol...)::Expr
     Expr(:import, import_args...)
 end
 
-function find_supertype_module(currenttype::DataType, identS::TypeIdentifier)::Module
+function find_supertype_module(currenttype::Type{T}, identS::TypeIdentifier)::Module where T
+	@assert T == currenttype
 	ctmod = parentmodule(currenttype)
 	ctname = nameof(currenttype)
 	if identS.modulefullname == fullname(ctmod) && identS.basename == ctname

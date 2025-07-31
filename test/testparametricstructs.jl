@@ -17,6 +17,7 @@ module M20
 	@implement struct Strawberry{L} <: NiceFruit
 		location::L
 	end
+	@verify_interfaces
 
 	@testset "inheriting parametric fields" begin
 		a = Apple(Int(1))
