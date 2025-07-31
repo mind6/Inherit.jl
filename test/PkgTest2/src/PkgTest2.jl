@@ -35,7 +35,7 @@ end
 @verify_interfaces
 
 function test()
-	@testset "implement @abstractbase from another module" begin
+	@testset "PkgTest2: implement @abstractbase from another module" begin
 		# local super type
 		@test fieldnames(Orange) == (:weight2,)
 

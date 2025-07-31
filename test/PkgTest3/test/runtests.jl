@@ -8,5 +8,8 @@ Pkg.activate(".")
 Pkg.develop(path=joinpath(pwd(), "..","PkgTest2"))
 Pkg.develop(path=joinpath(pwd(), "..", "..",))
 
+
 using PkgTest3
+
 @assert PkgTest3.Inherit === PkgTest3.PkgTest2.Inherit
+PkgTest3.test()

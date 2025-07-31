@@ -33,13 +33,46 @@ function to_qualified_expr(initialargs::Symbol ...)::Union{Symbol, Expr}
 	f(nothing, initialargs...)
 end
 
-"
-Makes a valid `import` expression like `import modpath1.modpath2.modpath3: item`
+"""
+    to_import_expr(item::Symbol, modname::NTuple{N, Symbol}, evalmodname::NTuple{M, Symbol})
 
-`:(import \$modpath : \$item)` won't work even when `modpath` evaluates to `modpath1.modpath2.modpath3`
+Generates a syntactically correct import expression that brings `item` from module `modname` 
+into scope when evaluated from module `evalmodname`. The function handles relative import 
+paths automatically, using `..` notation when importing from parent modules or siblings.
 
-evalmodname: the module where the import statement will be evaluated. It helps to convert Main to .. in some situations
-"
+# Arguments
+- `item`: Symbol to import (e.g., `:MyType`, `:myfunction`)
+- `modname`: Full module path where `item` is defined, as tuple of symbols 
+  (e.g., `(:Main, :MyPackage, :SubModule)`)
+- `evalmodname`: Full module path where the import statement will be evaluated
+  (e.g., `(:Main, :MyPackage, :AnotherModule)`)
+
+# Why use this function
+Julia's import syntax requires literal module paths - you cannot use variables or 
+interpolated expressions like `:(import \$modpath : \$item)`. This function constructs 
+the proper `Expr(:import, ...)` with the correct relative path syntax that Julia expects.
+
+# How it works
+The function analyzes the relationship between `modname` and `evalmodname` to determine:
+- Absolute imports when modules are unrelated
+- Relative imports with `.` when importing from submodules  
+- Relative imports with `..` when importing from parent/sibling modules
+
+# Examples
+```julia
+# Import from sibling module
+to_import_expr(:cost, (:Main, :M1), (:Main, :M2))
+# Returns: :(import ..M1: cost)
+
+# Import from parent module  
+to_import_expr(:MyType, (:Main, :Package), (:Main, :Package, :SubMod))
+# Returns: :(import ..: MyType)
+
+# Import from unrelated module
+to_import_expr(:func, (:Main, :Other), (:Main, :Current))  
+# Returns: :(import Main.Other: func)
+```
+"""
 function to_import_expr(item::Symbol, modname::NTuple{N, Symbol}, evalmodname::NTuple{M, Symbol})::Expr where {N, M}
 	modname = strip_self_reference(modname)
 	evalmodname = strip_self_reference(evalmodname)
@@ -78,6 +111,9 @@ function to_import_expr(item::Symbol, modname::NTuple{N, Symbol}, evalmodname::N
 		Expr(:(:), 
 			Expr(:., symbols...), 
 			Expr(:., item)))
+end
+
+function to_import_expr(itemS::Symbol, typeS::Union{Symbol, Expr})::Expr
 end
 
 function lastsymbol(expr::Union{Symbol, Expr, QuoteNode})::Symbol

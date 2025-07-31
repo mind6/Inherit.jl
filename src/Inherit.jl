@@ -36,8 +36,6 @@ export warmup_import_package
 __precompile__(true)
 
 
-const E_SUMMARY_LEVEL = "INHERIT_JL_SUMMARY_LEVEL"
-
 SymbolOrExpr = Union{Symbol, Expr}
 
 #super type identifier
@@ -59,6 +57,13 @@ struct MethodDeclaration
 	funcname::Symbol			#name of function. must be determined at type definition time. It cannot be extracted from sig because it may be empty until module __init__.
 	functype::DataType			#the original functype evaluated in original module. This is key to signature checking, and it results from the only evaluation we make into a non-temporary module.
 	sig::Type{<:Tuple}		#the original sig evaluated in original module
+end
+
+"""
+The location of the original definition of a method. 
+"""
+function typeidentifier(decl::MethodDeclaration)::TypeIdentifier
+	TypeIdentifier((decl.defmodulename, decl.defbasename))
 end
 
 struct ConstructorDefinition 
@@ -95,7 +100,7 @@ It must contain strings and expressions that describe the types, but not runtime
 	# abstract base type (defined in local module only) => flags and fields for this type
 	localtypespec::Dict{Symbol, TypeSpec} = Dict{Symbol, TypeSpec}()
 
-	# abstract base type (local or foreign) => list of required methods
+	# abstract base type (local or foreign) => list of required methods (including those inherited from supertypes)
 	methods::Dict{TypeIdentifier, Vector{MethodDeclaration}} = Dict{TypeIdentifier, Vector{MethodDeclaration}}()
 
 	# abstract base type (local or foreign) => list of constructor definitions
@@ -185,23 +190,23 @@ function process_supertype(currentmod::Module, S::Union{Symbol, Expr})::Tuple{Un
 	end
 	
 	### import all the foreign function declarations into the current module. Any methods we define will live with the foreign module's functions; they not not create our own function.
-	currentfullname = fullname(currentmod)
-	for decl in modinfo.methods[identS]
-		if decl.defmodulename == currentfullname continue end	#no need to import
+	# currentfullname = fullname(currentmod)
+	# for decl in modinfo.methods[identS]
+	# 	if decl.defmodulename == currentfullname continue end	#no need to import
 
-		funcname = decl.funcname
-		identF = TypeIdentifier((decl.defmodulename, funcname))
+	# 	funcname = decl.funcname
+	# 	identF = TypeIdentifier((decl.defmodulename, funcname))
 
-		if !isdefined(currentmod, funcname)
-			expr = to_import_expr(funcname, decl.defmodulename, currentfullname)
-			# currentmod.eval(:(export $funcname))	#NOTE: export must come before the symbol import, in order to work. I think we may not actually want this. Allow export lists to be explicit.
-			Core.eval(currentmod, expr)
-			push!(modinfo.imported, identF)
-			@debug "auto imported with `$expr`"
-		elseif identF ∉ modinfo.imported
-			@warn "$(nameof(currentmod)) already has a symbol `$funcname`. To implement $(decl.line) you should write the function name as `$(tostring(decl.defmodulename, funcname))`"
-		end
-	end
+	# 	if !isdefined(currentmod, funcname)
+	# 		expr = to_import_expr(funcname, decl.defmodulename, currentfullname)
+	# 		# currentmod.eval(:(export $funcname))	#NOTE: export must come before the symbol import, in order to work. I think we may not actually want this. Allow export lists to be explicit.
+	# 		Core.eval(currentmod, expr)
+	# 		push!(modinfo.imported, identF)
+	# 		@debug "auto imported with `$expr`"
+	# 	elseif identF ∉ modinfo.imported
+	# 		@warn "$(nameof(currentmod)) already has a symbol `$funcname`. To implement $(decl.line) you should write the function name as `$(tostring(decl.defmodulename, funcname))`"
+	# 	end
+	# end
 	
 	identS, modinfo
 end
@@ -314,8 +319,6 @@ macro verify_interfaces()
 			@debug "$(Inherit.tostring(identS)) has no subtypes; not requiring method implementations"
 			continue 
 		end
-		__defmodule__ = Inherit.find_supertype_module(
-			getproperty(__module__, SUBTYPES[1]), identS)
 
 		n_subtypes += Base.length(SUBTYPES)
 		n_signatures += Base.length(decls)
@@ -331,7 +334,10 @@ macro verify_interfaces()
 			# 	ret = Inherit.populatefunctionsignature!(decl, __defmodule__, identS.basename,  decls)
 			# 	@assert decl.sig !== nothing
 			# end
-
+			originalIdentS = typeidentifier(decl)
+			__defmodule__ = Inherit.find_supertype_module(
+				getproperty(__module__, SUBTYPES[1]), originalIdentS)
+	
 			funcname = decl.funcname
 
 			### make sure the defmodule can access the implementing type
@@ -352,7 +358,7 @@ macro verify_interfaces()
 			func = Base.getproperty(__defmodule__, funcname)
 			mt = Base.methods(func)
 			if mt === nothing || Base.isempty(mt)
-				errorstr = "$(Base.nameof(__defmodule__)) does not define a method for `$funcname`, which is required by:\n$(decl.line)"
+				errorstr = "No methods defined for `$(Base.nameof(__defmodule__)).$funcname`. A method must exist which satisfies:\n$(decl.line)"
 				handle_error(errorstr)
 				continue
 			end
@@ -366,7 +372,7 @@ macro verify_interfaces()
 				type_satisfied = false
 
 				# for each subtype it only needs to satisfy the concrete sig, where each occurrence of type T has been replaced with type subtype
-				@show decl
+				# @show decl
 				reducedline = Inherit.reducetype(decl.line, 
 					decl.defmodulename, decl.defbasename, 
 					LOCALMOD, subtype)
@@ -379,7 +385,7 @@ macro verify_interfaces()
 				#restore the functype signature from the original declaration
 				reducedsig = Inherit.set_sig_functype(reducedmethod.sig, decl.sig.types[1])
 				#this is safe to delete because it's on the renamed function
-				@debug "dangling method $reducedmethod left behind due to function signature replacement"
+				# @debug "dangling method $reducedmethod left behind due to function signature replacement"
 				# push!(modinfo.methods_to_delete, reducedmethod)
 				# Base.delete_method(reducedmethod)  #NOTE: it's okay to delete_method here because we're in the module init not the precompilation phase.						
 
@@ -394,7 +400,7 @@ macro verify_interfaces()
 					end							
 				end
 				if !type_satisfied
-					errorstr = "subtype $(Inherit.tostring(LOCALMOD, subtype)) missing $reducedsig declared as:\n$(decl.line)"
+					errorstr = "Subtype $(Inherit.tostring(LOCALMOD, subtype)) must satisfy $reducedsig, declared as:\n$(decl.line)"
 					handle_error(errorstr)
 				end
 			end	#end subtypes

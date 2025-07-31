@@ -1,5 +1,10 @@
 using Test, Inherit
-ENV["JULIA_DEBUG"] = "Inherit"
+if !haskey(ENV, "JULIA_DEBUG")
+	ENV["JULIA_DEBUG"] = "Inherit"
+end
+if VERSION.minor >= 11
+	import REPL
+end
 
 "
 Basic interface definition test. Interfaces can be redefined replacing existing definition. They are verified on module __init__(). 
@@ -190,6 +195,7 @@ end
 "
 module M3
 	using Inherit, Test, ..M1
+	import ..M1: cost
 	export Apple, Fruit, cost
 
 	@implement struct Apple <: Fruit end
@@ -209,8 +215,10 @@ module M3
 
 end
 
+
 module M3client
 	using ..M3, Test
+	import ..M1: cost
 	@testset "client syntax test" begin
 		item = Apple(1.5)
 		@test item isa Fruit
@@ -223,6 +231,7 @@ multilevel inheritance
 "
 module M4
 	using Inherit, Test, ..M1
+	import ..M1: cost
 	export Berry
 
 	@abstractbase struct Berry <: M1.Fruit
@@ -279,8 +288,10 @@ end
 		@test false
 	catch e
 		@test e isa LoadError 
-		@test e.error isa ImplementError
-		@test contains(e.error.msg, "missing Tuple{typeof(Main.M1.cost)")
+		if !(e.error isa ImplementError)
+			throw(e.error)
+		end
+		@test contains(e.error.msg, "Subtype Main.M4fail.BlueBerry must satisfy Tuple{typeof(Main.M1.cost), Main.M4fail.BlueBerry, Float32}")
 		# println(e.error.msg)
 	end
 end
@@ -290,11 +301,12 @@ end
 		eval(:(
 			module M4fail2
 				using Inherit, Test, ..M1
+
 				@abstractbase struct Berry <: M1.Fruit
 					cluster::Int
 					function punchcost(b::Berry, unitprice::Float32)::Float32 end
 				end
-				cost(item::Fruit, ::Float32) = 1.0
+				M1.cost(item::Fruit, ::Float32) = 1.0
 				
 				@implement struct BlueBerry <: Berry end
 
@@ -306,7 +318,7 @@ end
 	catch e
 		@test e isa LoadError 
 		@test e.error isa ImplementError
-		@test contains(e.error.msg, "does not define a method for `punchcost`")
+		@test contains(e.error.msg, "No methods defined for `M4fail2.punchcost`")
 		# println(e.error.msg)
 	end
 end
@@ -316,8 +328,10 @@ end
 "
 module M4client
 	using Inherit, Test, ..M4
+	import ..M4: cost, bunchcost
 	@implement struct BlueBerry <: Berry end
 	function bunchcost(item::BlueBerry) 3.33 end
+	function cost(item::BlueBerry, unitprice::Float32) 6.66 end		#this only works from REPL because there is a toplevel Main. From a package there would very hard to import M1.cost correctly, and it's too untransparent what's being imported.
 
 	@verify_interfaces
 	@testset "3 levels and 3 modules satisfied" begin
@@ -338,7 +352,7 @@ end
 	catch e
 		@test e isa LoadError 
 		@test e.error isa ImplementError
-		@test contains(e.error.msg, "missing Tuple{typeof(Main.M4.bunchcost)")
+		@test contains(e.error.msg, "Subtype Main.M4clientfail.BlueBerry must satisfy Tuple{typeof(Main.M4.bunchcost), Main.M4clientfail.BlueBerry}")
 		# println(e.error.msg)
 	end
 end
@@ -432,7 +446,7 @@ end
 	catch e
 		@test e isa LoadError 
 		@test e.error isa ImplementError
-		@test contains(e.error.msg, "missing Tuple{typeof(Main.M9fail.pack)")
+		@test contains(e.error.msg, "Subtype Main.M9fail.BlueBerry must satisfy Tuple{typeof(Main.M9fail.pack), Int64, Dict{String, <:AbstractVector{Main.M9fail.Berry}}}")
 		# println(e.error.msg)
 	end
 end

@@ -37,17 +37,19 @@ end
 
 end
 
-@testset "detecting empty function body" begin
-	function f1() end
-	function f2() end
-	function f3() end
+if VERSION.minor >= 11
+	@testset "detecting empty function body" begin
+		function f1() end
+		function f2 end
+		function f3 end
 
-	function f2() println("this function does something") end
-	function f3() nothing end
+		function f2() println("this function does something") end
+		function f3() nothing end
 
-	@test Inherit.hasemptybody(code_typed(f1)[1].first)	#prototype never implemented
-	@test !Inherit.hasemptybody(code_typed(f2)[1].first) #has some implementation
-	@test Inherit.hasemptybody(code_typed(f3)[1].first) #equivalent to f1
+		@test Inherit.hasemptybody(code_typed(f1)[1].first)	#prototype never implemented
+		@test !Inherit.hasemptybody(code_typed(f2)[1].first) #has some implementation
+		@test Inherit.hasemptybody(code_typed(f3)[1].first) #equivalent to f1
+	end
 end
 
 @testset "utils tests" begin
