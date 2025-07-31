@@ -8,7 +8,7 @@ Dispatch tests ensure the reduced signature evaluation step is not overwriting m
 "
 module M1
 	using Inherit, Test
-		export Fruit 
+	export Fruit 
 
 	"base types can be documented"
 	@abstractbase struct NoSubTypesOK impliedAnyOK end
@@ -259,72 +259,87 @@ module M4
 
 end
 
-module M4fail
-	using Inherit, Test, ..M1
-	@abstractbase struct Berry <: M1.Fruit
-		cluster::Int
-		function bunchcost(b::Berry, unitprice::Float32)::Float32 end
+@testset "function M1.cost exists (due to auto import)\nbut no methods for required signature" begin
+	try
+		eval(:(
+			module M4fail
+				using Inherit, Test, ..M1
+				@abstractbase struct Berry <: M1.Fruit
+					cluster::Int
+					function bunchcost(b::Berry, unitprice::Float32)::Float32 end
+				end
+				
+				@implement struct BlueBerry <: Berry end
+				bunchcost(item::BlueBerry, ::Float32) = 1.0
+
+				Inherit.reportlevel = ThrowError
+				@verify_interfaces
+			end
+		))
+		@test false
+	catch e
+		@test e isa LoadError 
+		@test e.error isa ImplementError
+		@test contains(e.error.msg, "missing Tuple{typeof(Main.M1.cost)")
+		# println(e.error.msg)
 	end
-	
-	@implement struct BlueBerry <: Berry end
-	bunchcost(item::BlueBerry, ::Float32) = 1.0
+end
 
-	Inherit.reportlevel = ThrowError
+@testset "no methods at all for punchcost" begin
+	try
+		eval(:(
+			module M4fail2
+				using Inherit, Test, ..M1
+				@abstractbase struct Berry <: M1.Fruit
+					cluster::Int
+					function punchcost(b::Berry, unitprice::Float32)::Float32 end
+				end
+				cost(item::Fruit, ::Float32) = 1.0
+				
+				@implement struct BlueBerry <: Berry end
 
-	@verify_interfaces
-
-	@testset "multilevel inheritance" begin
-		Inherit.reportlevel = ThrowError
-		@test_throws ImplementError __init__()
+				Inherit.reportlevel = ThrowError
+				@verify_interfaces
+			end
+		))
+		@test false
+	catch e
+		@test e isa LoadError 
+		@test e.error isa ImplementError
+		@test contains(e.error.msg, "does not define a method for `punchcost`")
+		# println(e.error.msg)
 	end
-
-	Inherit.reportlevel = ShowMessage
 end
 
 "
-Tests that satisfying all subtypes doesn't incorrectly skip a later declaration
-"
-module M4fail2
-	using Inherit, Test, ..M1
-	@abstractbase struct Berry <: M1.Fruit
-		cluster::Int
-		function punchcost(b::Berry, unitprice::Float32)::Float32 end
-	end
-	cost(item::Fruit, ::Float32) = 1.0
-	
-	@implement struct BlueBerry <: Berry end
-
-	@testset "multilevel inheritance" begin
-		Inherit.reportlevel = ThrowError
-		@test_throws ImplementError __init__()
-	end
-
-	Inherit.reportlevel = ShowMessage
-end
-
-"
-multilevel inheritance from a 3rd module
+3 levels of inheritance from a 3rd module
 "
 module M4client
 	using Inherit, Test, ..M4
 	@implement struct BlueBerry <: Berry end
-	function bunchcost(item::BlueBerry) 1.0 end
+	function bunchcost(item::BlueBerry) 3.33 end
 
-
+	@verify_interfaces
 	@testset "3 levels and 3 modules satisfied" begin
-		Inherit.reportlevel = ThrowError
-		@test_nothrows __init__()
+		@test bunchcost(BlueBerry(1.0, 3)) == 3.33
 	end
 end
 
-module M4clientfail
-	using Inherit, Test, ..M4
-	@implement struct BlueBerry <: M4.Berry end
-
-	@testset "3 levels and 3 modules not satisfied" begin
-		Inherit.reportlevel = ThrowError
-		@test_throws ImplementError __init__()
-		Inherit.reportlevel = ShowMessage
+@testset "no methods for required signature of bunchcost" begin
+	try
+		eval(:(
+			module M4clientfail
+				using Inherit, Test, ..M4
+				@implement struct BlueBerry <: M4.Berry end
+				@verify_interfaces
+			end
+		))
+		@test false
+	catch e
+		@test e isa LoadError 
+		@test e.error isa ImplementError
+		@test contains(e.error.msg, "missing Tuple{typeof(Main.M4.bunchcost)")
+		# println(e.error.msg)
 	end
 end
 
@@ -334,7 +349,7 @@ module M5
 
 	@abstractbase struct Fruit
 		weight::Float64
-		"comments from declarations are appended at the end of method comments"
+		"comments from declarations are at the front of method comments"
 		function cost(fruit::Fruit, unitprice::Float64) end
 	end
 	"this implementation satisfies the interface declaration for all subtypes of Fruit"
@@ -342,12 +357,9 @@ module M5
 		unitprice * item.weight
 	end		
 
-	@postinit function myinit()
-		@testset "doc check - @abstractbase only" begin
-			@test replace(string(@doc(cost)), r"\s"=>"") == replace(
-			"this implementation satisfies the interface declaration for all subtypes of Fruit"* "comments from declarations are appended at the end of method comments", r"\s"=>"")
-		end
-	end	
+	@testset "doc check - @abstractbase only" begin
+		@test replace(string(@doc(cost)), r"(\n)+"=>".") == "comments from declarations are at the front of method comments.this implementation satisfies the interface declaration for all subtypes of Fruit."
+	end
 end
 
 "@abstractbase only - check interface doc with empty method table"
@@ -356,15 +368,13 @@ module M5b
 
 	@abstractbase struct Fruit
 		weight::Float64
-		"comments from declarations are appended at the end of method comments"
+		"comments from declarations are at the front of method comments"
 		function cost(fruit::Fruit, unitprice::Float64) end
 	end
 	
-	@postinit function myinit()
-		@testset "doc check - empty method table" begin
-			@test replace(string(@doc(cost)), r"\s"=>"") == replace("comments from declarations are appended at the end of method comments", r"\s"=>"")
-		end
-	end	
+	@testset "doc check - empty method table" begin
+		@test replace(string(@doc(cost)), r"(\n)+"=>".") == "comments from declarations are at the front of method comments."
+	end
 end
 
 "
@@ -382,6 +392,8 @@ module M6
 
 	@abstractbase struct Berry end
 
+	@verify_interfaces
+
 	@testset "mutability tests" begin	
 		@test_throws "mutability" @implement struct Apple <: Fruit end
 		@test_throws "mutability" @implement mutable struct Cherry <: Berry end
@@ -394,55 +406,34 @@ module M6
 	end
 end
 
-"post init by itself"
-module M7
-	using Inherit
-	# @abstractbase struct S end
-	initialized::Bool = false
-	@postinit () -> begin
-		M7.initialized = true
-	end
-end
+@testset "parametric argument types must be matched exactly" begin
+	try
+		eval(:(
+			module M9fail
+				using Inherit, Test
+				import ..M1
+			
+				@abstractbase struct Berry <: M1.Fruit
+					"the supertype can appear in a variety of positions"
+					function pack(time::Int, bunch::Dict{String, <:AbstractVector{Berry}}) end
+				end
+			
+				@implement struct BlueBerry <: Berry end
+			
+				"the implementing method's argument types can be broader than the interface's argument types"
+				function pack(time::Number, bunch::Dict{String, <:AbstractVector{BlueBerry}}) 
+					println("packing things worth \$$(cost(first(values(bunch))[1], 1.5))")
+				end
 
-@testset "postinit by itself" begin
-	@test M7.initialized == true
-end
-
-"silently ovewriting Inherit.jl's __init__()"
-module M8
-	using Inherit, ..M1
-	@implement struct Coconut <: Fruit  end
-	initialized::Bool = false
-	function __init__()
-		M8.initialized = true
-	end
-end
-
-@testset "__init__ gets silently overwritten" begin
-	@test M8.initialized == true
-end
-
-"parametric argument types must be matched exactly"
-module M9fail
-	using Inherit, Test
-	import ..M1
-
-	@abstractbase struct Berry <: M1.Fruit
-		"the supertype can appear in a variety of positions"
-		function pack(time::Int, bunch::Dict{String, <:AbstractVector{Berry}}) end
-	end
-
-	@implement struct BlueBerry <: Berry end
-
-	"the implementing method's argument types can be broader than the interface's argument types"
-	function pack(time::Number, bunch::Dict{String, <:AbstractVector{BlueBerry}}) 
-		println("packing things worth \$$(cost(first(values(bunch))[1], 1.5))")
-	end
-
-	@testset "parametric argument types must be matched exactly" begin
-		Inherit.reportlevel = ThrowError
-		@test_throws ImplementError __init__()
-		Inherit.reportlevel = ShowMessage
+				@verify_interfaces
+			end		
+		))
+		@test false
+	catch e
+		@test e isa LoadError 
+		@test e.error isa ImplementError
+		@test contains(e.error.msg, "missing Tuple{typeof(Main.M9fail.pack)")
+		# println(e.error.msg)
 	end
 end
 

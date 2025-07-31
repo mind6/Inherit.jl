@@ -166,7 +166,7 @@ If the supertype is not an @abstractbase, returns (nothing, modinfo).
 
 If the supertype is defined in a foreign module, the CompiletimeModuleInfo will contain the foreign module's CompiletimeModuleInfo.
 """
-function process_supertype(currentmod::Module, S::Union{Symbol, Expr})::Tuple{Union{Nothing, TypeIdentifier}, CompiletimeModuleInfo}
+function process_supertype(currentmod::Module, S::Union{Symbol, Expr})::Tuple{Union{Nothing, TypeIdentifier}, Union{Nothing, CompiletimeModuleInfo}}
 	objS = Core.eval(currentmod, S)		
 	moduleS = parentmodule(objS)		#whichever module the supertype was defined in
 	nameS = nameof(objS)			

@@ -115,10 +115,10 @@ function tostring(ident::TypeIdentifier)
 	tostring(ident.modulefullname, ident.basename)
 end
 
-function getfuncname(decl::MethodDeclaration)::Symbol
-	# nameof(decl.sig.parameters[1].instance)
-	decl.funcname
-end
+# function getfuncname(decl::MethodDeclaration)::Symbol
+# 	# nameof(decl.sig.parameters[1].instance)
+# 	decl.funcname
+# end
 
 # "
 # get the module given its fullname and the module handle we currently have
