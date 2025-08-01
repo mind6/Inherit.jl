@@ -58,7 +58,7 @@ import Inherit: transform_constructor, get_supertype_constructor_name
 	end
 end
 
-@testset "transform_constructor" begin
+@testset verbose=true "transform_constructor" begin
 
 
 	@testset "transform new() only" begin
@@ -85,6 +85,19 @@ end
 		result = transform_constructor(:Apple, expr; isabstract=false, super_type_constructor=:construct_Fruit)
 		expected = :(function Apple()
 				new(construct_Fruit(1.0)..., 3)
+		end)
+		@test MacroTools.striplines(result) == MacroTools.striplines(expected)
+	end
+
+	@testset "super() will expand in functions other than new()" begin
+		expr = :(
+			function Apple()
+				Apple(super(1.0), 3)
+			end
+		)
+		result = transform_constructor(:Apple, expr; isabstract=false, super_type_constructor=:construct_Fruit)
+		expected = :(function Apple()
+			Apple(construct_Fruit(1.0)..., 3)
 		end)
 		@test MacroTools.striplines(result) == MacroTools.striplines(expected)
 	end
@@ -121,6 +134,25 @@ end
 		@test MacroTools.striplines(result2) == MacroTools.striplines(expected2)
 	end
 
+	@testset "new() or no new() in abstract constructor" begin
+		expr = :(
+			function Apple()
+				Apple(super(1.0), 3)
+			end
+		)
+		result = transform_constructor(:Apple, expr; isabstract=false, super_type_constructor=:construct_Fruit)
+		expected = :(function Apple()
+			Apple(construct_Fruit(1.0)..., 3)
+		end)
+		@test MacroTools.striplines(result) == MacroTools.striplines(expected)
+
+		expr = :(
+			function Apple()
+				Apple(super(1.0), 3)
+			end
+		)
+		@test_throws "new() calls are required in abstract constructors" transform_constructor(:Apple, expr; isabstract=true, super_type_constructor=:construct_Fruit)
+	end
 	@testset "Get supertype constructor name" begin
 		
 		# Test this with our test module from above

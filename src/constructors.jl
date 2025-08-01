@@ -16,15 +16,18 @@ super() calls appear only in valid positions before performing transformations.
 - Function is renamed with "construct_" prefix
 - `new(arg1, arg2, ...)` → `tuple(arg1, arg2, ...)`
 - `new()` → `tuple()`
+- **Requires at least one `new()` call** - throws error if no `new()` calls are found. This is to simplify the creation of constructor tuples.
 
 The new() function is transformed to return a tuple of the field values instead of 
 creating an instance. This enables the inheritance system to collect field values 
 from all levels of the inheritance hierarchy before creating the final struct.
+Abstract constructors must contain at least one new() call to define the structure's fields.
 
 ### Concrete constructors (when isabstract=false):
 - Function name remains unchanged
-- `new()` calls remain as `new()` calls
+- `new()` calls remain as `new()` calls (if present)
 - Only super() calls are transformed
+- **No requirement for `new()` calls** - can use alternative constructor patterns
 
 ### super() calls (when super_type_constructor is provided):
 - `super(arg1, arg2, ...)` → `super_type_constructor(arg1, arg2, ...)...`
@@ -77,6 +80,19 @@ function Apple()
 end
 ```
 
+### Concrete constructor without new() (valid):
+```julia
+# Input (isabstract=false, super_type_constructor=:construct_Fruit):
+function Apple()
+    Apple(super(1.0), 3)  # no new() call - this is valid for concrete constructors
+end
+
+# Output:
+function Apple()
+    Apple(construct_Fruit(1.0)..., 3)
+end
+```
+
 ### Abstract constructor with both new() and super():
 ```julia
 # Input (isabstract=true, super_type_constructor=:construct_Food):
@@ -118,12 +134,18 @@ end
 function Fruit(w)
     new(:abc, super("is confused"))  # super() not in first position
 end
+
+# This will throw an error for abstract constructors:
+function Apple()  # isabstract=true
+    Apple(super(1.0), 3)  # no new() call
+end
+# Error: "new() calls are required in abstract constructors"
 ```
 
 The transformed functions return tuples representing the complete field initialization 
 data (for construct_ functions) or modified expressions (for regular functions) that 
 will be used by the inheritance system to construct the final struct instance.
-Functions with no new() calls remain unchanged.
+Abstract constructors must contain at least one new() call to define the structure.
 
 # Parameters:
 - `funcname`: even though it's contained in the constructor_expr, we require the function name as an argument to represent a single source of truth determined at the calling site. This can simplify the renaming of the function and make the process more robust.
@@ -159,8 +181,10 @@ function transform_constructor(funcname::Symbol, constructor_expr::Expr; isabstr
    end
    
    # Second pass: perform the actual transformations
+	found_new = false
    res = MacroTools.postwalk(constructor_expr) do x
       if isabstract && @capture(x, new(args__))
+			found_new = true
 			return :(tuple($(args...),))
       elseif super_type_constructor !== nothing && @capture(x, super(args__))
          construct_call = :($super_type_constructor($(args...))...)
@@ -174,6 +198,9 @@ function transform_constructor(funcname::Symbol, constructor_expr::Expr; isabstr
 
 	# rename the function if it's an abstract constructor
 	if isabstract
+		if !found_new
+			error("new() calls are required in abstract constructors")
+		end
 		rename_abstract_constructor!(res.args[1], funcname)
 	end
 
