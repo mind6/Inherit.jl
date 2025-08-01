@@ -205,15 +205,45 @@ module cross_module_calls
 	cons_S = modinfoA.consdefs[:Food][1]
 	cons_T = modinfoB.consdefs[:Fruit][1]
 
-	@show cons_T.transformed_expr
+	# @show cons_T.transformed_expr
 
 	@testset "cross_module_calls" begin
-		# @test !isdefined(A,:construct_Food)
-		# @test Core.eval(A, cons_S.transformed_expr)() == (true,)
+		imported_consname = Inherit.locate_supertype_constructor(B, :Fruit)
+		@test isdefined(B, imported_consname)
+		@test getproperty(B, imported_consname)() == (true,)
+
 		@test isdefined(A,:construct_Food)
 		@test A.construct_Food() == (true,)
 	end
+
+	module C
+		using Inherit
+		import ..B: Fruit
+
+		@implement struct Banana <: Fruit
+			source::String
+			function Banana(s)
+				new(super(9.9), s)
+			end
+		end
+	end
+
+	@testset "calling concrete constructor" begin
+		banana = C.Banana("from the tropics")
+		@test banana.tax_exempt == true
+		@test banana.weight == 0.9 * 9.9
+		@test banana.size == "large"
+		@test banana.source == "from the tropics"
+	end
 end
+# dump(MacroTools.striplines(:(
+# 	struct Banana <: Fruit
+# 		a::int
+# 		function Banana(s)
+# 			new(super(9.9), s)
+# 		end
+# 	end
+# )))
 
 @testset "Cross-module super() calls" begin
 	# Create two modules to test cross-module inheritance
@@ -264,7 +294,7 @@ end
 	@test isdefined(base_module,:construct_Food)
 	@test base_module.construct_Food() == (true,)
 	# The super() call should resolve to base_module.construct_Food
-	@show cons_T.transformed_expr
+	# @show cons_T.transformed_expr
 
 	@test isdefined(derived_module,:construct_Fruit)
 

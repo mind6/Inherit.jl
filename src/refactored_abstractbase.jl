@@ -184,19 +184,18 @@ function process_method_declaration(current_module::Module, identT::TypeIdentifi
 	is_constructor = funcname == identT.basename
 	
 	modinfo = getproperty(current_module, H_COMPILETIMEINFO)
-	module_fullname = fullname(current_module)
 	
 	if is_constructor
 		# Process constructor definition
-		super_type_constructor=get_supertype_constructor_name(current_module, identT.basename)		
+		imported_cons_name=locate_supertype_constructor(current_module, identT.basename)		
 		transformed_expr = transform_constructor(funcname, line;
 			isabstract=true, 
-			super_type_constructor=super_type_constructor)
+			super_type_constructor=imported_cons_name)
 		
 		Core.eval(current_module, :(@doc $comment $transformed_expr))	
 
 		# we may want to reduce what gets stored soon
-		push!(modinfo.consdefs[identT.basename], ConstructorDefinition(identT, line, transformed_expr, super_type_constructor, comment))
+		push!(modinfo.consdefs[identT.basename], ConstructorDefinition(identT, line, transformed_expr, imported_cons_name, comment))
 	elseif body === nothing || isempty(body)
 		# Regular method declaration -  declare the function without methods in the current_module
 		Core.eval(current_module, :(@doc $comment function $(funcname) end)) 	# document the function in the current_module
@@ -254,7 +253,7 @@ function process_type_body(current_module, type_name, lines)
 			
 			# Reset comment if it wasn't used
 			if comment !== nothing
-				# @warn "ignoring string expression: $comment"
+				@debug "ignoring string expression: $comment"
 				comment = nothing
 			end
 		end

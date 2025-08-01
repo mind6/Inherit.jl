@@ -58,12 +58,12 @@ Invalid placements will raise an error with the message:
 ```julia
 # Input (isabstract=true):
 function Apple()
-    new(1.0, 3)
+	new(1.0, 3)
 end
 
 # Output:
 function construct_Apple()
-    tuple(1.0, 3)
+	tuple(1.0, 3)
 end
 ```
 
@@ -71,12 +71,12 @@ end
 ```julia
 # Input (isabstract=false, super_type_constructor=:construct_Fruit):
 function Apple()
-    new(super(1.0), 3)
+	new(super(1.0), 3)
 end
 
 # Output:
 function Apple()
-    new(construct_Fruit(1.0)..., 3)
+	new(construct_Fruit(1.0)..., 3)
 end
 ```
 
@@ -84,12 +84,12 @@ end
 ```julia
 # Input (isabstract=false, super_type_constructor=:construct_Fruit):
 function Apple()
-    Apple(super(1.0), 3)  # no new() call - this is valid for concrete constructors
+	Apple(super(1.0), 3)  # no new() call - this is valid for concrete constructors
 end
 
 # Output:
 function Apple()
-    Apple(construct_Fruit(1.0)..., 3)
+	Apple(construct_Fruit(1.0)..., 3)
 end
 ```
 
@@ -97,12 +97,12 @@ end
 ```julia
 # Input (isabstract=true, super_type_constructor=:construct_Food):
 function Fruit(w)
-    new(super(), w * 0.9, "large")
+	new(super(), w * 0.9, "large")
 end
 
 # Output:
 function construct_Fruit(w)
-    tuple(construct_Food()..., w * 0.9, "large")
+	tuple(construct_Food()..., w * 0.9, "large")
 end
 ```
 
@@ -110,16 +110,16 @@ end
 ```julia
 # Input (isabstract=true, super_type_constructor=:construct_Fruit):
 function Apple()
-    do_something()
-    return new(super(1.0), 3)
-    do_something_else()
+	do_something()
+	return new(super(1.0), 3)
+	do_something_else()
 end
 
 # Output:
 function construct_Apple()
-    do_something()
-    return tuple(construct_Fruit(1.0)..., 3)
-    do_something_else()
+	do_something()
+	return tuple(construct_Fruit(1.0)..., 3)
+	do_something_else()
 end
 ```
 
@@ -127,17 +127,17 @@ end
 ```julia
 # This will throw an error:
 function Fruit(w)
-    super("is confused")  # standalone super() call
+	super("is confused")  # standalone super() call
 end
 
 # This will also throw an error:
 function Fruit(w)
-    new(:abc, super("is confused"))  # super() not in first position
+	new(:abc, super("is confused"))  # super() not in first position
 end
 
 # This will throw an error for abstract constructors:
 function Apple()  # isabstract=true
-    Apple(super(1.0), 3)  # no new() call
+	Apple(super(1.0), 3)  # no new() call
 end
 # Error: "new() calls are required in abstract constructors"
 ```
@@ -159,39 +159,39 @@ function transform_constructor(funcname::Symbol, constructor_expr::Expr; isabstr
    
    # First pass: validate super() calls are only in valid positions  
    if super_type_constructor !== nothing
-      valid_super_calls = Set{Any}()
-      
-      # Find all super() calls that are in valid positions (first argument of function calls)
-      MacroTools.postwalk(constructor_expr) do x
-         if @capture(x, f_(args__)) && length(args) >= 1
-            if @capture(args[1], super(sargs__))
-               push!(valid_super_calls, args[1])
-            end
-         end
-         return x
-      end
-      
-      # Check all super() calls - if any are not in valid_super_calls, they're invalid
-      MacroTools.postwalk(constructor_expr) do x
-         if @capture(x, super(args__)) && !(x in valid_super_calls)
-            error("super() calls can only appear as the first argument of a function (such as new() or SomeType())")
-         end
-         return x
-      end
+	  valid_super_calls = Set{Any}()
+	  
+	  # Find all super() calls that are in valid positions (first argument of function calls)
+	  MacroTools.postwalk(constructor_expr) do x
+		 if @capture(x, f_(args__)) && length(args) >= 1
+			if @capture(args[1], super(sargs__))
+			   push!(valid_super_calls, args[1])
+			end
+		 end
+		 return x
+	  end
+	  
+	  # Check all super() calls - if any are not in valid_super_calls, they're invalid
+	  MacroTools.postwalk(constructor_expr) do x
+		 if @capture(x, super(args__)) && !(x in valid_super_calls)
+			error("super() calls can only appear as the first argument of a function (such as new() or SomeType())")
+		 end
+		 return x
+	  end
    end
    
    # Second pass: perform the actual transformations
 	found_new = false
    res = MacroTools.postwalk(constructor_expr) do x
-      if isabstract && @capture(x, new(args__))
+	  if isabstract && @capture(x, new(args__))
 			found_new = true
 			return :(tuple($(args...),))
-      elseif super_type_constructor !== nothing && @capture(x, super(args__))
-         construct_call = :($super_type_constructor($(args...))...)
-         return construct_call
-      else
-         return x
-      end
+	  elseif super_type_constructor !== nothing && @capture(x, super(args__))
+		 construct_call = :($super_type_constructor($(args...))...)
+		 return construct_call
+	  else
+		 return x
+	  end
    end
 
 	@assert res.head == :function
@@ -228,21 +228,81 @@ end
 
 
 """
-Get the constructor function name for the closest immediate supertype of the given type which has a constructor.
-Returns nothing if there's no supertype or no constructor available.
+For the given derived type, 
+1. finds an available abstract constructor for the closest supertype.
+2. imports the constructor function into the current module under a non-conflicting name
+3. returns the name of the reference to the imported constructor function in the current module
+
+Returns nothing if there's no Inherit.jl abstract constructor available.
 """
-function get_supertype_constructor_name(current_module::Module, current_type_name::Symbol)::Union{Nothing, Symbol}
-    modinfo = getproperty(current_module, H_COMPILETIMEINFO)
-    
-    if !haskey(modinfo.localtypespec, current_type_name)
-        return nothing
-    end    
-   
-    # TODO: Implement actual supertype resolution logic
-    # This should:
-    # 1. Find the applicable supertype of current_type_name, which is a TypeIdentifier
-    # 2. Return the appropriate construct_SuperTypeName symbol
-    # 3. Handle cross-module cases properly
-    return nothing  # placeholder
+function locate_supertype_constructor(current_module::Module, derived_typename::Symbol)::Union{Nothing, Symbol}
+	derivedtype = getproperty(current_module, derived_typename)
+	locate_constructor(current_module, supertype(derivedtype))
 end
 
+function locate_constructor(current_module::Module, supertype::DataType)::Union{Nothing, Symbol}
+	consfunc = find_supertype_constructor_function(supertype)
+	if consfunc === nothing
+		return nothing
+	end
+	imported_name = Symbol(join(("__Inherit_jl", fullname(parentmodule(consfunc))..., nameof(consfunc)),'_'))
+	# @show imported_name
+	Core.eval(current_module, :(global $imported_name = $consfunc))
+	return imported_name
+end
+
+function find_supertype_constructor_function(supertype::DataType)::Union{Nothing, Function}
+	__defmodule__ = parentmodule(supertype)
+	basename = nameof(supertype)
+
+	# @show __defmodule__
+	if !isdefined(__defmodule__, H_COMPILETIMEINFO) 
+		# is not an Inherit.jl type and cannot have a supertype which is an Inherit.jl type
+		return nothing
+	end
+
+	defmodinfo = getproperty(__defmodule__, H_COMPILETIMEINFO)
+	# @show defmodinfo
+	if !haskey(defmodinfo.consdefs, basename)
+		# no constructor definitions for this type, look in supertype
+		return find_supertype_constructor_function(supertype(basetype))
+	end
+
+	@assert !isempty(defmodinfo.consdefs[basename]) "expected at least oneconstructor definition because $basename is in the keys of consdefs"
+		# defined and recorded
+	constructor_name = Symbol("construct_", basename)
+	@assert isdefined(__defmodule__, constructor_name)
+	return getproperty(__defmodule__, constructor_name)
+end
+
+"""
+'T' the derived type, 'S' the supertype.
+
+Finds all constructor definitions in the given lines and transforms them in place.
+"""
+function find_and_transform_constructors!(lines::AbstractVector{<:Any}, T::Symbol, S::Union{Symbol, Expr},current_module::Module)
+	objS = Core.eval(current_module, S)		
+	modinfo = getproperty(current_module, H_COMPILETIMEINFO)
+
+	for (i, line) in enumerate(lines)
+		if isexpr(line, :function)
+			if !@capture(line, (function funcname_(__) body__ end) | (function funcname_(__)::__ body__ end))
+				errorstr = "Cannot recognize $line as a constructor. It must look like `function funcname(...) ... end`"
+				return :(throw(ImplementError($errorstr)))
+			end
+			is_constructor = funcname == T
+			if is_constructor
+				# Process constructor definition
+				imported_cons_name=locate_constructor(current_module, objS)		
+				transformed_expr = transform_constructor(funcname, line;
+					isabstract=false, 
+					super_type_constructor=imported_cons_name)
+				
+				# we don't want to eval here, T hasn't been defined yet. We just modify 'lines' in place.
+				lines[i] = transformed_expr
+		
+				# since we're in a concrete class, in theory we don't need to store anything (and in fact we may not have setup CompileTimeInfo for the module) for use by derived types.
+			end			
+		end #if isexpr(line, :function)
+	end #for (i, line) in enumerate(lines)
+end #find_and_transform_constructors!

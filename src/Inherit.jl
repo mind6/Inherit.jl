@@ -62,7 +62,7 @@ struct ConstructorDefinition
 	defident::TypeIdentifier	#the identifier of the supertype where the declaration was originally defined
 	original_expr::Expr
 	transformed_expr::Expr
-	super_type_constructor::Union{Nothing, Symbol}
+	imported_cons_name::Union{Nothing, Symbol}
 	linecomment::Union{Nothing, String, Expr}
 end
 
@@ -450,13 +450,13 @@ macro implement(ex)
 
 	T = P = nothing
 	local ismutable
-	if @capture(ex, struct T_Symbol<:S_ fields__ end)
+	if @capture(ex, struct T_Symbol<:S_ lines__ end)
 		ismutable = false
-	elseif @capture(ex, struct T_Symbol{P__}<:S_ fields__ end)
+	elseif @capture(ex, struct T_Symbol{P__}<:S_ lines__ end)
 		ismutable = false
-	elseif @capture(ex, mutable struct T_Symbol<:S_ fields__ end)
+	elseif @capture(ex, mutable struct T_Symbol<:S_ lines__ end)
 		ismutable = true
-	elseif @capture(ex, mutable struct T_Symbol{P__}<:S_ fields__ end)
+	elseif @capture(ex, mutable struct T_Symbol{P__}<:S_ lines__ end)
 		ismutable = true
 	else
 		errorstr = "Cannot parse the following as a struct subtype:\n $ex"
@@ -480,6 +480,7 @@ macro implement(ex)
 	modinfoT = getproperty(__module__, H_COMPILETIMEINFO)
 	localsubtypes = modinfoT.subtypes
 
+	### add T as a subtype of S, and import any method declarations from the supertype's module
 	if modinfoS != modinfoT		#foreign module
 		if !haskey(localsubtypes, identS)
 			# @assert identS.modulefullname != fullname(__module__) "if $S was defined in the current module, it should have created an entry in DBS"
@@ -491,7 +492,7 @@ macro implement(ex)
 	end
 	push!(localsubtypes[identS], T)
 
-	# add the type parameters if they exist
+	### add the type parameters if they exist
 	if !isempty(specS.typeparams) || P !== nothing
 		if P === nothing 
 			P = Vector{SymbolOrExpr}() 
@@ -502,8 +503,13 @@ macro implement(ex)
 		# ex.args[2].args[2] = Expr(:curly, T, P...)
 		ex = replace_parameterized_type(ex, T, P)
 	end
-	# add the fields for the supertype to the front of list for derived type
-	prepend!(ex.args[3].args, specS.fields)	
+
+	### look for any constructor definitions and transform them
+	lines = ex.args[3].args
+	find_and_transform_constructors!(lines, T, S, __module__)
+
+	### add the fields for the supertype to the front of list for derived type
+	prepend!(lines, specS.fields)	
 
 	esc(ex)		#hygiene pass will resolve ex to the Inherit module if not escaped
 end	#end @implement
