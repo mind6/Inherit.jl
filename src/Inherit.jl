@@ -50,8 +50,7 @@ TypeSpec = @NamedTuple{
 }
 
 struct MethodDeclaration 
-	defmodulename::Tuple 	#module where the declaration was originally defined. helps with line reduction
-	defbasename::Symbol		#base type name where the declaration was originally defined. helps with line reduction
+	defident::TypeIdentifier	#the identifier of the supertype where the declaration was originally defined
 	line::Expr	 				#the original statement AST
 	linecomment::Union{Nothing, String, Expr}		#String or Expr(:string ...) that documents the line
 	funcname::Symbol			#name of function. must be determined at type definition time. It cannot be extracted from sig because it may be empty until module __init__.
@@ -59,18 +58,11 @@ struct MethodDeclaration
 	sig::Type{<:Tuple}		#the original sig evaluated in original module
 end
 
-"""
-The location of the original definition of a method. 
-"""
-function typeidentifier(decl::MethodDeclaration)::TypeIdentifier
-	TypeIdentifier((decl.defmodulename, decl.defbasename))
-end
-
 struct ConstructorDefinition 
-	defmodulename::Tuple 	#module where the declaration was originally defined. helps with line reduction
-	defbasename::Symbol		#base type name where the declaration was originally defined. helps with line reduction
+	defident::TypeIdentifier	#the identifier of the supertype where the declaration was originally defined
 	original_expr::Expr
 	transformed_expr::Expr
+	super_type_constructor::Union{Nothing, Symbol}
 	linecomment::Union{Nothing, String, Expr}
 end
 
@@ -95,16 +87,19 @@ end
 There is one instance for each module which uses Inherit.jl. It is built up when @abstractbase and @implement macros execute at compile time. 
 
 It must contain strings and expressions that describe the types, but not runtime instances themselves. It may contain compile time state and evaluated function objects. These function objects can be called during module __init__, as per PkgTest4.jl
+
+
 """
 @kwdef struct CompiletimeModuleInfo
 	# abstract base type (defined in local module only) => flags and fields for this type
 	localtypespec::Dict{Symbol, TypeSpec} = Dict{Symbol, TypeSpec}()
 
-	# abstract base type (local or foreign) => list of required methods (including those inherited from supertypes)
-	methods::Dict{TypeIdentifier, Vector{MethodDeclaration}} = Dict{TypeIdentifier, Vector{MethodDeclaration}}()
+	# abstract base type (defined in local module only) => list of constructor definitions
+	consdefs::Dict{Symbol, Vector{ConstructorDefinition}} = Dict{Symbol, Vector{ConstructorDefinition}}()
 
-	# abstract base type (local or foreign) => list of constructor definitions
-	consdefs::Dict{TypeIdentifier, Vector{ConstructorDefinition}} = Dict{TypeIdentifier, Vector{ConstructorDefinition}}()
+	# abstract base type (local or foreign) => list of required methods (including those inherited from supertypes)
+	method_decls::Dict{TypeIdentifier, Vector{MethodDeclaration}} = Dict{TypeIdentifier, Vector{MethodDeclaration}}()
+
 
 	# abstract base type (local or foreign) => list of local subtypes
 	subtypes::Dict{TypeIdentifier, Vector{Symbol}} = Dict{TypeIdentifier, Vector{Symbol}}()
@@ -191,7 +186,7 @@ function process_supertype(currentmod::Module, S::Union{Symbol, Expr})::Tuple{Un
 	
 	### import all the foreign function declarations into the current module. Any methods we define will live with the foreign module's functions; they not not create our own function.
 	# currentfullname = fullname(currentmod)
-	# for decl in modinfo.methods[identS]
+	# for decl in modinfo.method_decls[identS]
 	# 	if decl.defmodulename == currentfullname continue end	#no need to import
 
 	# 	funcname = decl.funcname
@@ -270,7 +265,7 @@ include("constructors.jl")
 # 		# # @label process_postinit
 # 		# println("processing $(Base.length(modinfo.postinit)) module inits...")
 # 		if !isprecompiling()
-# 			for m in modinfo.methods_to_delete 
+# 			for m in modinfo.method_decls_to_delete 
 # 				Base.delete_method(m)
 # 			end
 # 		end
@@ -307,7 +302,7 @@ macro verify_interfaces()
 	# LM_HANDLE  = Symbol(:__Inherit_jl_, LOCALMOD[end])
 
 	### for each supertype of some type defined in this module...
-	for (identS, decls) ∈ modinfo.methods
+	for (identS, decls) ∈ modinfo.method_decls
 		n_supertypes += 1
 		# __supertypemod__ = Inherit.getmodule(identS.modulefullname)
 		# isforeign = __supertypemod__ != @__MODULE__
@@ -334,9 +329,8 @@ macro verify_interfaces()
 			# 	ret = Inherit.populatefunctionsignature!(decl, __defmodule__, identS.basename,  decls)
 			# 	@assert decl.sig !== nothing
 			# end
-			originalIdentS = typeidentifier(decl)
 			__defmodule__ = Inherit.find_supertype_module(
-				getproperty(__module__, SUBTYPES[1]), originalIdentS)
+				getproperty(__module__, SUBTYPES[1]), decl.defident)
 	
 			funcname = decl.funcname
 
@@ -374,7 +368,7 @@ macro verify_interfaces()
 				# for each subtype it only needs to satisfy the concrete sig, where each occurrence of type T has been replaced with type subtype
 				# @show decl
 				reducedline = Inherit.reducetype(decl.line, 
-					decl.defmodulename, decl.defbasename, 
+					decl.defident.modulefullname, decl.defident.basename, 
 					LOCALMOD, subtype)
 				@debug "evaluating $reducedline"
 
@@ -386,7 +380,7 @@ macro verify_interfaces()
 				reducedsig = Inherit.set_sig_functype(reducedmethod.sig, decl.sig.types[1])
 				#this is safe to delete because it's on the renamed function
 				# @debug "dangling method $reducedmethod left behind due to function signature replacement"
-				# push!(modinfo.methods_to_delete, reducedmethod)
+				# push!(modinfo.method_decls_to_delete, reducedmethod)
 				# Base.delete_method(reducedmethod)  #NOTE: it's okay to delete_method here because we're in the module init not the precompilation phase.						
 
 				for m in mt				#methods implemented on function of required sig
@@ -491,7 +485,7 @@ macro implement(ex)
 			# @assert identS.modulefullname != fullname(__module__) "if $S was defined in the current module, it should have created an entry in DBS"
 			localsubtypes[identS] = Vector{Symbol}()
 		end
-		modinfoT.methods[identS] = modinfoS.methods[identS]
+		modinfoT.method_decls[identS] = modinfoS.method_decls[identS]
 	else						#local module
 		@assert haskey(localsubtypes, identS)
 	end

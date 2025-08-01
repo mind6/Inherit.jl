@@ -39,15 +39,12 @@ import Inherit: transform_constructor, get_supertype_constructor_name
 		@test haskey(modinfo.localtypespec, :Fruit)
 		
 		# Check if constructor definitions were stored
-		food_ident = Inherit.TypeIdentifier((fullname(test_module), :Food))
-		fruit_ident = Inherit.TypeIdentifier((fullname(test_module), :Fruit))
-		
-		@test haskey(modinfo.consdefs, food_ident)
-		@test haskey(modinfo.consdefs, fruit_ident)
+		@test haskey(modinfo.consdefs, :Food)
+		@test haskey(modinfo.consdefs, :Fruit)
 		
 		# Examine the constructor definitions
-		food_constructors = modinfo.consdefs[food_ident]
-		fruit_constructors = modinfo.consdefs[fruit_ident]
+		food_constructors = modinfo.consdefs[:Food]
+		fruit_constructors = modinfo.consdefs[:Fruit]
 		
 		@test length(food_constructors) == 1
 		@test length(fruit_constructors) == 1
@@ -204,17 +201,17 @@ module cross_module_calls
 
 	modinfoA = getproperty(A, Inherit.H_COMPILETIMEINFO)
 	modinfoB = getproperty(B, Inherit.H_COMPILETIMEINFO)
-	identS = Inherit.TypeIdentifier((fullname(A), :Food))
-	identT = Inherit.TypeIdentifier((fullname(B), :Fruit))
-	cons_S = modinfoA.consdefs[identS][1]
-	cons_T = modinfoB.consdefs[identT][1]
+
+	cons_S = modinfoA.consdefs[:Food][1]
+	cons_T = modinfoB.consdefs[:Fruit][1]
 
 	@show cons_T.transformed_expr
 
 	@testset "cross_module_calls" begin
-		@test !isdefined(A,:construct_Food)
-		@test Core.eval(A, cons_S.transformed_expr)() == (true,)
+		# @test !isdefined(A,:construct_Food)
+		# @test Core.eval(A, cons_S.transformed_expr)() == (true,)
 		@test isdefined(A,:construct_Food)
+		@test A.construct_Food() == (true,)
 	end
 end
 
@@ -260,19 +257,16 @@ end
 	base_modinfo = getproperty(base_module, Inherit.H_COMPILETIMEINFO)
 	derived_modinfo = getproperty(derived_module, Inherit.H_COMPILETIMEINFO)
 
-	identS = Inherit.TypeIdentifier((fullname(base_module), :Food))
-	identT = Inherit.TypeIdentifier((fullname(derived_module), :Fruit))
-	cons_S = base_modinfo.consdefs[identS][1]
-	cons_T = derived_modinfo.consdefs[identT][1]
+	cons_S = base_modinfo.consdefs[:Food][1]
+	cons_T = derived_modinfo.consdefs[:Fruit][1]
 
-	@test !isdefined(base_module,:construct_Food)
 	@test Core.eval(base_module, cons_S.transformed_expr)() == (true,)
 	@test isdefined(base_module,:construct_Food)
-
+	@test base_module.construct_Food() == (true,)
 	# The super() call should resolve to base_module.construct_Food
 	@show cons_T.transformed_expr
 
-	@test_skip isdefined(derived_module,:construct_Fruit)
+	@test isdefined(derived_module,:construct_Fruit)
 
 	# This test helps us understand cross-module constructor resolution
 end

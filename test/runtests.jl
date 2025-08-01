@@ -27,6 +27,7 @@ ENV["JULIA_DEBUG"] = nothing
 
 #TODO: error out when overwriting a previous defined module __init__. Note that this won't prevent the user from overwriting Inherit.jl's __init__, but it's still helpful in reducing errors.
 @testset verbose = true "test Inherit.jl" begin
+	include("test_transformconstructor.jl")
 	include("testutils.jl")
 	include("testmain.jl")
 	include("testparametricstructs.jl")

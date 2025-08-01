@@ -231,7 +231,7 @@ end
 Get the constructor function name for the closest immediate supertype of the given type which has a constructor.
 Returns nothing if there's no supertype or no constructor available.
 """
-function get_supertype_constructor_name(current_module::Module, current_type_name::Symbol)
+function get_supertype_constructor_name(current_module::Module, current_type_name::Symbol)::Union{Nothing, Symbol}
     modinfo = getproperty(current_module, H_COMPILETIMEINFO)
     
     if !haskey(modinfo.localtypespec, current_type_name)

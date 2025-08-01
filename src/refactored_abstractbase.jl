@@ -81,7 +81,6 @@ function initialize_type_metadata(current_module::Module, type_name::Symbol, ism
 		@warn "overwriting previous definition of $type_name in $current_module"
 	end
 	
-	# Create type identifier
 	identT = TypeIdentifier((module_fullname, type_name))
 	
 	# Create initial empty metadata
@@ -90,8 +89,8 @@ function initialize_type_metadata(current_module::Module, type_name::Symbol, ism
 		Vector{SymbolOrExpr}(), # Start with empty array for type params
 		Vector{Expr}()))        # Start with empty array for fields
 		
-	modinfo.methods[identT] = Vector{MethodDeclaration}()
-	modinfo.consdefs[identT] = Vector{ConstructorDefinition}()
+	modinfo.consdefs[type_name] = Vector{ConstructorDefinition}()
+	modinfo.method_decls[identT] = Vector{MethodDeclaration}()
 	modinfo.subtypes[identT] = Vector{Symbol}()
 	
 	return identT
@@ -138,7 +137,7 @@ function inherit_supertype_metadata(current_module::Module, type_name::Symbol, s
 	identT = TypeIdentifier((fullname(current_module), type_name))
 	
 	# Inherit method declarations
-	append!(modinfoT.methods[identT], modinfoS.methods[identS])
+	append!(modinfoT.method_decls[identT], modinfoS.method_decls[identS])
 	
 	return nothing
 end
@@ -172,7 +171,7 @@ Process a method declaration in the type body.
 - Declares function prototype in the current module
 - Adds method declaration to the database
 """
-function process_method_declaration(current_module::Module, type_name::Symbol, ident::TypeIdentifier, line::Expr, comment::Union{Nothing, String})
+function process_method_declaration(current_module::Module, identT::TypeIdentifier, line::Expr, comment::Union{Nothing, String})
 	if !@capture(line, (function funcname_(__) body__ end) | (function funcname_(__)::__ body__ end))
 		errorstr = "Cannot recognize $line as either a constructor or a valid prototype definition. It must look like `function funcname(...) ... end`"
 		return :(throw(InterfaceError($errorstr)))
@@ -182,19 +181,22 @@ function process_method_declaration(current_module::Module, type_name::Symbol, i
 	body = MacroTools.striplines(body)
 	
 	# Check if this is a constructor (function name matches type name)
-	is_constructor = funcname == type_name
+	is_constructor = funcname == identT.basename
 	
 	modinfo = getproperty(current_module, H_COMPILETIMEINFO)
 	module_fullname = fullname(current_module)
 	
 	if is_constructor
 		# Process constructor definition
-		transformed_constructor = transform_constructor(funcname, line;
+		super_type_constructor=get_supertype_constructor_name(current_module, identT.basename)		
+		transformed_expr = transform_constructor(funcname, line;
 			isabstract=true, 
-			super_type_constructor=get_supertype_constructor_name(current_module, type_name))
+			super_type_constructor=super_type_constructor)
 		
-		# Store the constructor prototype for later implementation
-		push!(modinfo.consdefs[ident], ConstructorDefinition(module_fullname, type_name, line, transformed_constructor, comment))
+		Core.eval(current_module, :(@doc $comment $transformed_expr))	
+
+		# we may want to reduce what gets stored soon
+		push!(modinfo.consdefs[identT.basename], ConstructorDefinition(identT, line, transformed_expr, super_type_constructor, comment))
 	elseif body === nothing || isempty(body)
 		# Regular method declaration -  declare the function without methods in the current_module
 		Core.eval(current_module, :(@doc $comment function $(funcname) end)) 	# document the function in the current_module
@@ -205,7 +207,7 @@ function process_method_declaration(current_module::Module, type_name::Symbol, i
 		shadowsig = make_function_signature(shadowmodule, functype, line)
 
 		# Store method declaration in the database
-		push!(modinfo.methods[ident], MethodDeclaration(module_fullname, type_name, line, comment, funcname, functype, shadowsig))
+		push!(modinfo.method_decls[identT], MethodDeclaration(identT, line, comment, funcname, functype, shadowsig))
 	else
 		errorstr = "If method declaration isn't a constructor, it must be without a body."
 		return :(throw(InterfaceError($errorstr)))
@@ -241,7 +243,7 @@ function process_type_body(current_module, type_name, lines)
 		else
 			# Process methods and fields
 			if isexpr(line, :function)
-				result = process_method_declaration(current_module, type_name, identT, line, comment)
+				result = process_method_declaration(current_module, identT, line, comment)
 				if result !== nothing
 					return result
 				end
