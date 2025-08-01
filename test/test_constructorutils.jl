@@ -2,7 +2,7 @@
 using Test, MacroTools
 using Inherit
 
-import Inherit: transform_new_calls, generate_construct_function
+import Inherit: transform_constructor, generate_construct_function
 
 #=
 This code demonstrates how different syntactic constructs in Julia create different 
@@ -59,15 +59,15 @@ end
  =#
  
  @testset "Constructor Transformations" begin
-	# Test transform_new_calls
-	@testset "transform_new_calls" begin
+	# Test transform_constructor
+	@testset "transform_constructor" begin
 	   # Test case 1: Simple new call
 	   expr1 = :(
 		  function MyType(x, y)
 			 new(x + 1, y * 2)
 		  end
 	   )
-	   transformed1 = transform_new_calls(expr1)  # Get the function body
+	   transformed1 = transform_constructor(expr1)  # Get the function body
 	   expected1 = :(
 		  function MyType(x, y)
 			 return (x + 1, y * 2,)
@@ -81,7 +81,7 @@ end
 			 new()
 		  end
 	   )
-	   transformed2 = transform_new_calls(expr2)
+	   transformed2 = transform_constructor(expr2)
 	   expected2 = :(
 		  function EmptyType()
 			 return ()
@@ -93,7 +93,7 @@ end
 	# Test generate_construct_function
 	@testset "generate_construct_function" begin
 	   # Test case 1: Simple constructor with function body
-	   constructor_expr = transform_new_calls(:(
+	   constructor_expr = transform_constructor(:(
 		  function MyType(x::Int, y::Float64)
 			 x += 1
 			 y *= 2
@@ -110,7 +110,7 @@ end
 	   @test result == (2, 4.0)
  
 	   # Test case 2: Constructor with no arguments
-	   constructor_expr2 = transform_new_calls(:(
+	   constructor_expr2 = transform_constructor(:(
 		  function EmptyType()
 			 new()
 		  end
@@ -121,7 +121,7 @@ end
 	   @test result2 == ()
  
 	   # Test case 3: Constructor with single argument and edge case
-	   constructor_expr2 = transform_new_calls(:(
+	   constructor_expr2 = transform_constructor(:(
 		  function OneArgType(x)
 			 res = new(x+1)
 			 @warn "new constructs a tuple: $res"
@@ -141,8 +141,8 @@ end
  # - Keyword arguments are not tested.
 
 @testset "Constructor transformation functions" begin
-	# Test transform_new_calls
-	@testset "transform_new_calls" begin
+	# Test transform_constructor
+	@testset "transform_constructor" begin
 		# Test basic new transformation
 		constructor_expr = :(
 			function Food()
@@ -150,7 +150,7 @@ end
 			end
 		)
 		
-		transformed = transform_new_calls(constructor_expr)
+		transformed = transform_constructor(constructor_expr)
 		expected = :(
 			function Food()
 				return (true,)
@@ -166,7 +166,7 @@ end
 			end
 		)
 		
-		transformed = transform_new_calls(constructor_expr)
+		transformed = transform_constructor(constructor_expr)
 		expected = :(
 			function Fruit(w)
 				return (super(), w * 0.9, "large")
@@ -184,7 +184,7 @@ end
 			end
 		)
 		
-		transformed = transform_new_calls(constructor_expr)
+		transformed = transform_constructor(constructor_expr)
 		@test MacroTools.striplines(transformed) == MacroTools.striplines(constructor_expr)
 	end
 	
@@ -256,7 +256,7 @@ end
 		)
 		
 		# Process Food constructor
-		food_transformed = transform_new_calls(food_constructor)
+		food_transformed = transform_constructor(food_constructor)
 		food_construct = generate_construct_function(food_transformed)
 		
 		# Evaluate in test module
@@ -270,7 +270,7 @@ end
 		)
 		
 		# Process Fruit constructor
-		fruit_transformed = transform_new_calls(fruit_constructor)
+		fruit_transformed = transform_constructor(fruit_constructor)
 		fruit_construct = generate_construct_function(fruit_transformed)
 		
 		# Evaluate in test module

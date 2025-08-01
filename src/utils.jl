@@ -431,64 +431,13 @@ function privatize_funcname(funcdef::Expr)::Expr
 	end, funcdef)
 end
 
-################################################################################
-#=
-Originally in constructors.jl:
-
-These functions help to implement the new() and super() special functions, as outlined in test/runnable_designs.jl.
-=#
-
-# Transform new calls in constructors
-function transform_new_calls(constructor_expr, supertype_name=nothing)
-   MacroTools.postwalk(constructor_expr) do x
-      if @capture(x, new(args__))
-         return :(return ($(args...),))
-      elseif supertype_name !== nothing && @capture(x, super(args__))
-			# funcname = "construct_$(supertype_name)"
-			funcname = Symbol(:construct_, supertype_name)
-         construct_call = :($funcname($(args...))...)
-         return construct_call
-      else
-         return x
-      end
-   end
-end
-
-"""
-Get the constructor function name for the closest immediate supertype of the given type which has a constructor.
-Returns nothing if there's no supertype or no constructor available.
-"""
-function get_supertype_constructor_name(current_module::Module, current_type_name::Symbol)
-    DBSPEC = getproperty(current_module, H_TYPESPEC)
-    
-    if !haskey(DBSPEC, current_type_name)
-        return nothing
-    end    
-   
-    # TODO: Implement actual supertype resolution logic
-    # This should:
-    # 1. Find the applicable supertype of current_type_name, which is a TypeIdentifier
-    # 2. Return the appropriate construct_SuperTypeName symbol
-    # 3. Handle cross-module cases properly
-    return nothing  # placeholder
-end
-
-# Generate construct_TypeName function from constructor
-function generate_construct_function(constructor_expr)
-	@assert isexpr(constructor_expr, :function)
-
-	# Extract function arguments and body
-	type_name = constructor_expr.args[1].args[1]
-	func_args = constructor_expr.args[1].args[2:end]
-	func_body = constructor_expr.args[2]
-	# @show dump(func_body)
-
-	# Create the construct_TypeName function using expression tree
-	fname = Symbol("construct_", type_name)
-	fargs = Expr(:call, fname, func_args...)
-	ftype = Expr(:(::), fargs, :Tuple)
-	fdef = Expr(:function, ftype, func_body)
-	return fdef
+function get_funcname(funcdef::Expr)::Symbol
+	MacroTools.postwalk(x->begin
+		if x isa Expr && x.head == :call
+			x.args[1]
+		end
+		x
+	end, funcdef)
 end
 
 """

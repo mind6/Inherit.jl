@@ -91,7 +91,7 @@ function initialize_type_metadata(current_module::Module, type_name::Symbol, ism
 		Vector{Expr}()))        # Start with empty array for fields
 		
 	modinfo.methods[identT] = Vector{MethodDeclaration}()
-	modinfo.constructor_definitions[identT] = Vector{ConstructorDefinition}()
+	modinfo.consdefs[identT] = Vector{ConstructorDefinition}()
 	modinfo.subtypes[identT] = Vector{Symbol}()
 	
 	return identT
@@ -174,7 +174,7 @@ Process a method declaration in the type body.
 """
 function process_method_declaration(current_module::Module, type_name::Symbol, ident::TypeIdentifier, line::Expr, comment::Union{Nothing, String})
 	if !@capture(line, (function funcname_(__) body__ end) | (function funcname_(__)::__ body__ end))
-		errorstr = "Cannot recognize $line as either a constructor or a valid prototype definition."
+		errorstr = "Cannot recognize $line as either a constructor or a valid prototype definition. It must look like `function funcname(...) ... end`"
 		return :(throw(InterfaceError($errorstr)))
 	end
 	
@@ -189,12 +189,12 @@ function process_method_declaration(current_module::Module, type_name::Symbol, i
 	
 	if is_constructor
 		# Process constructor definition
-		super_type_constructor_name = get_supertype_constructor_name(current_module, type_name)
-		transformed_constructor = transform_new_calls(line, super_type_constructor_name)
-		construct_function = generate_construct_function(transformed_constructor)
+		transformed_constructor = transform_constructor(funcname, line;
+			isabstract=true, 
+			super_type_constructor=get_supertype_constructor_name(current_module, type_name))
 		
 		# Store the constructor prototype for later implementation
-		push!(modinfo.constructor_definitions[ident], ConstructorDefinition(module_fullname, type_name, line, construct_function, comment))
+		push!(modinfo.consdefs[ident], ConstructorDefinition(module_fullname, type_name, line, transformed_constructor, comment))
 	elseif body === nothing || isempty(body)
 		# Regular method declaration -  declare the function without methods in the current_module
 		Core.eval(current_module, :(@doc $comment function $(funcname) end)) 	# document the function in the current_module
@@ -207,7 +207,7 @@ function process_method_declaration(current_module::Module, type_name::Symbol, i
 		# Store method declaration in the database
 		push!(modinfo.methods[ident], MethodDeclaration(module_fullname, type_name, line, comment, funcname, functype, shadowsig))
 	else
-		errorstr = "Cannot recognize $line as a valid prototype definition. It must look like `function funcname(...) end` without a body."
+		errorstr = "If method declaration isn't a constructor, it must be without a body."
 		return :(throw(InterfaceError($errorstr)))
 	end
 	
@@ -280,7 +280,11 @@ function add_type_parameters(current_module, type_name, type_params)
 	append!(modinfo.localtypespec[type_name].typeparams, type_params)
 end
 
-# Main abstractbase macro implementation
+"""
+ Main abstractbase macro implementation
+
+'super()' is a reserved function in the context of inheritable constructors. It is used to call the constructor of the supertype.
+"""
 macro abstractbase(ex)
 	# 1. Initialize module database
 	setup_module_db(__module__)

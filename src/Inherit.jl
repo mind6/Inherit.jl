@@ -104,7 +104,7 @@ It must contain strings and expressions that describe the types, but not runtime
 	methods::Dict{TypeIdentifier, Vector{MethodDeclaration}} = Dict{TypeIdentifier, Vector{MethodDeclaration}}()
 
 	# abstract base type (local or foreign) => list of constructor definitions
-	constructor_definitions::Dict{TypeIdentifier, Vector{ConstructorDefinition}} = Dict{TypeIdentifier, Vector{ConstructorDefinition}}()
+	consdefs::Dict{TypeIdentifier, Vector{ConstructorDefinition}} = Dict{TypeIdentifier, Vector{ConstructorDefinition}}()
 
 	# abstract base type (local or foreign) => list of local subtypes
 	subtypes::Dict{TypeIdentifier, Vector{Symbol}} = Dict{TypeIdentifier, Vector{Symbol}}()
@@ -131,7 +131,7 @@ const H_COMPILETIMEINFO::Symbol = :__Inherit_jl_COMPILETIMEINFO
 const H_SHADOW_SUBMODULE::Symbol = :__Inherit_jl_SHADOW_SUBMODULE
 
 #NOTE: this is a runtime map where user modules self-register with Inherit.jl (both when isprecompiling() is false and when it is true).
-const FULLNAME_TO_MODULE = Dict{Tuple, Module}()	#points from fullname(mod) to the mod. 
+# const FULLNAME_TO_MODULE = Dict{Tuple, Module}()	#points from fullname(mod) to the mod. 
 
 global reportlevel::ReportLevel = ThrowError
 
@@ -227,7 +227,7 @@ __Mutability__ must be the same as the supertype's mutability.
 "
 
 include("refactored_abstractbase.jl")
-
+include("constructors.jl")
 
 # function create_module__init__()::Expr
 # 	# TODO: this was hard won knowledge; implement it in some function?
@@ -288,7 +288,7 @@ This verifies the known interfaces of the current module. It should be placed at
 The macro runs as a compile time verification step. The presence of this macro is optional. If not present, clients of the module should notice no difference.
 """
 macro verify_interfaces()
-	Inherit.FULLNAME_TO_MODULE[Base.fullname(__module__)] = __module__	# at compile time we need to update this map for self-lookup. The dependencies update to this same map but through runtime __init__.
+	# Inherit.FULLNAME_TO_MODULE[Base.fullname(__module__)] = __module__	# at compile time we need to update this map for self-lookup. The dependencies update to this same map but through runtime __init__.
 
 	n_supertypes = n_subtypes = n_signatures = n_errors = 0
 
@@ -530,13 +530,10 @@ function (<--)(a ,b)
 end
 
 #=
-This should only ever execute when precompiling.
-
-We're trying to avoid __init__() because it's alway recompiled during loading.
+This can execute when precompiling or when module is revised.
 =#
 begin
-	@assert isprecompiling()
-	@info "Inherit.jl finished precompiling"
+	@info "reached bottom of Inherit.jl" isprecompiling()
 end
 
 end # module Inherit

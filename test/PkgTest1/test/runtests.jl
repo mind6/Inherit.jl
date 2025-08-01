@@ -32,11 +32,11 @@ end
 	end
 
 	@testset "loading performance" begin
-		@test t.time < 0.004	skip=true # normal times are 1.5ms in julia 1.11, 1.8ms in Julia 1.10 LTS. added 1ms after adding shadow module
+		@test_skip t.time < 0.004	# normal times are 1.5ms in julia 1.11, 1.8ms in Julia 1.10 LTS. added 1ms after adding shadow module
 
 		if Int(VERSION.minor) >= 11
-			@test t.recompile_time == 0 skip=true	# requires Julia 1.11
-			@test t.compile_time == 0 skip=true
+			@test_skip t.recompile_time == 0	# requires Julia 1.11
+			@test_skip t.compile_time == 0
 		end
 	end
 

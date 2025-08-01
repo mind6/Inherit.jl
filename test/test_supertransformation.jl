@@ -2,7 +2,7 @@
 using Test, MacroTools
 using Inherit
 
-import Inherit: transform_new_calls, get_supertype_constructor_name
+import Inherit: transform_constructor, get_supertype_constructor_name
 
 @testset "Super() transformation exploration" begin
 	# First, let's create a test module to explore the data structures
@@ -33,79 +33,116 @@ import Inherit: transform_new_calls, get_supertype_constructor_name
 		end)
 		
 		# Now let's explore what data structures were created
-		DBSPEC = getproperty(test_module, Inherit.H_TYPESPEC)
-		DBCON = getproperty(test_module, Inherit.H_CONSTRUCTOR_DEFINITIONS)
+		modinfo = getproperty(test_module, Inherit.H_COMPILETIMEINFO)
 		
-		@test haskey(DBSPEC, :Food)
-		@test haskey(DBSPEC, :Fruit)
+		@test haskey(modinfo.localtypespec, :Food)
+		@test haskey(modinfo.localtypespec, :Fruit)
 		
 		# Check if constructor definitions were stored
 		food_ident = Inherit.TypeIdentifier((fullname(test_module), :Food))
 		fruit_ident = Inherit.TypeIdentifier((fullname(test_module), :Fruit))
 		
-		@test haskey(DBCON, food_ident)
-		@test haskey(DBCON, fruit_ident)
+		@test haskey(modinfo.consdefs, food_ident)
+		@test haskey(modinfo.consdefs, fruit_ident)
 		
 		# Examine the constructor definitions
-		food_constructors = DBCON[food_ident]
-		fruit_constructors = DBCON[fruit_ident]
+		food_constructors = modinfo.consdefs[food_ident]
+		fruit_constructors = modinfo.consdefs[fruit_ident]
 		
 		@test length(food_constructors) == 1
 		@test length(fruit_constructors) == 1
 		
 		# Check that we can access the supertype information
-		fruit_spec = DBSPEC[:Fruit]
+		fruit_spec = modinfo.localtypespec[:Fruit]
 		@test length(fruit_spec.fields) > 1  # Should have inherited fields from Food
 	end
 end
 
-@testset "Super() call transformation" begin
-	@testset "Basic super() transformation" begin
+@testset "transform_constructor" begin
+
+
+	@testset "transform new() only" begin
+		expr = :(
+			function Apple()
+				new(1.0, 3)
+			end
+		)
+		result = transform_constructor(:Apple, expr; isabstract=true, super_type_constructor=nothing)
+		expected = :(
+			function construct_Apple()
+				tuple(1.0, 3)
+			end
+		)
+		@test MacroTools.striplines(result) == MacroTools.striplines(expected)
+	end
+
+	@testset "transform super() only" begin
+		expr = :(
+			function Apple()
+				new(super(1.0), 3)
+			end
+		)
+		result = transform_constructor(:Apple, expr; isabstract=false, super_type_constructor=:construct_Fruit)
+		expected = :(function Apple()
+				new(construct_Fruit(1.0)..., 3)
+		end)
+		@test MacroTools.striplines(result) == MacroTools.striplines(expected)
+	end
+
+	@testset "transform both new() and super()" begin
 		# Test transforming super() calls in constructor bodies
-		constructor_expr = :(
+		expr = :(
 			function Fruit(w)
 				new(super(), w * 0.9, "large")
 			end
 		)
-		result = transform_new_calls(constructor_expr, :Food)
+		result = transform_constructor(:Fruit, expr; isabstract=true, super_type_constructor=:construct_Food)
 		expected = :(
-			function Fruit(w)
-				return (construct_Food()..., w * 0.9, "large")
+			function construct_Fruit(w)
+				tuple(construct_Food()..., w * 0.9, "large")
 			end
 		)
 		@test MacroTools.striplines(result) == MacroTools.striplines(expected)
 		
 		# Test with arguments
-		constructor_expr2 = :(
+		expr2 = :(
 			function Apple()
-				new(super(1.0), 3)
+				do_something()
+				return new(super(1.0), 3)
+				do_something_else()
 			end
 		)
-		result2 = transform_new_calls(constructor_expr2, :Fruit)
-		expected2 = :(function Apple()
-			return (construct_Fruit(1.0)..., 3)
+		result2 = transform_constructor(:Apple, expr2; isabstract=true, super_type_constructor=:construct_Fruit)
+		expected2 = :(function construct_Apple()
+			do_something()
+			return tuple(construct_Fruit(1.0)..., 3)
+			do_something_else()
 		end)
 		@test MacroTools.striplines(result2) == MacroTools.striplines(expected2)
 	end
-	
+
 	@testset "Get supertype constructor name" begin
-		# Create a function to determine the supertype constructor name
-		# This should use the existing inheritance data structures
-		function get_supertype_constructor_name(current_module, current_type_name)
-			DBSPEC = getproperty(current_module, Inherit.H_TYPESPEC)
-			
-			# For now, let's implement a simple version that looks at the type hierarchy
-			# We need to find what this type inherits from
-			
-			# This is a placeholder - we need to implement the actual logic
-			# based on how @abstractbase stores supertype information
-			return :construct_Food  # placeholder
-		end
 		
 		# Test this with our test module from above
 		# This test will help us understand what we need to implement
 		@test_skip get_supertype_constructor_name(test_module, :Fruit) == :construct_Food
 	end
+end
+
+@testset "Super() calls must be the first argument" begin
+	expr1 = :(
+		function Fruit(w)
+			super("is confused")
+		end
+	)
+	@test_throws "super() calls can only appear as the first argument of a function (such as new() or SomeType())" transform_constructor(:Fruit, expr1; isabstract=false, super_type_constructor=:construct_Food)
+
+	expr2 = :(
+		function Fruit(w)
+			new(:abc, super("is confused"))
+		end
+	)
+	@test_throws "super() calls can only appear as the first argument of a function (such as new() or SomeType())"  transform_constructor(:Fruit, expr2; isabstract=true, super_type_constructor=:construct_Food)
 end
 
 module cross_module_calls
@@ -133,12 +170,12 @@ module cross_module_calls
 
 	using Inherit, Test, .A, .B
 
-	A_CONSDEF = getproperty(A, Inherit.H_CONSTRUCTOR_DEFINITIONS)
-	B_CONSDEF = getproperty(B, Inherit.H_CONSTRUCTOR_DEFINITIONS)
+	modinfoA = getproperty(A, Inherit.H_COMPILETIMEINFO)
+	modinfoB = getproperty(B, Inherit.H_COMPILETIMEINFO)
 	identS = Inherit.TypeIdentifier((fullname(A), :Food))
 	identT = Inherit.TypeIdentifier((fullname(B), :Fruit))
-	cons_S = A_CONSDEF[identS][1]
-	cons_T = B_CONSDEF[identT][1]
+	cons_S = modinfoA.consdefs[identS][1]
+	cons_T = modinfoB.consdefs[identT][1]
 
 	@show cons_T.transformed_expr
 
@@ -148,16 +185,17 @@ module cross_module_calls
 		@test isdefined(A,:construct_Food)
 	end
 end
+
 @testset "Cross-module super() calls" begin
 	# Create two modules to test cross-module inheritance
 	base_module = Module(:base_mod)
 	derived_module = Module(:derived_mod)
 	
 	# Set up both modules
-	Inherit.setup_module_db(base_module)
-	Inherit.setup_module_db(derived_module)
 	Core.eval(base_module, :(using Inherit))
 	Core.eval(derived_module, :(using Inherit))
+	Inherit.setup_module_db(base_module)
+	Inherit.setup_module_db(derived_module)
 
 	# Define base type in base_module
 	Core.eval(base_module, quote
@@ -181,19 +219,19 @@ end
 	end)
 	
 	# Test that the inheritance worked across modules
-	derived_DBSPEC = getproperty(derived_module, Inherit.H_TYPESPEC)
-	@test haskey(derived_DBSPEC, :Fruit)
+	modinfo = getproperty(derived_module, Inherit.H_COMPILETIMEINFO)
+	@test haskey(modinfo.localtypespec, :Fruit)
 	
-	fruit_spec = derived_DBSPEC[:Fruit]
+	fruit_spec = modinfo.localtypespec[:Fruit]
 	@test length(fruit_spec.fields) > 1  # Should have inherited tax_exempt field
 	
-	base_CONSDEF = getproperty(base_module, Inherit.H_CONSTRUCTOR_DEFINITIONS)
-	derived_CONSDEF = getproperty(derived_module, Inherit.H_CONSTRUCTOR_DEFINITIONS)
+	base_modinfo = getproperty(base_module, Inherit.H_COMPILETIMEINFO)
+	derived_modinfo = getproperty(derived_module, Inherit.H_COMPILETIMEINFO)
 
 	identS = Inherit.TypeIdentifier((fullname(base_module), :Food))
 	identT = Inherit.TypeIdentifier((fullname(derived_module), :Fruit))
-	cons_S = base_CONSDEF[identS][1]
-	cons_T = derived_CONSDEF[identT][1]
+	cons_S = base_modinfo.consdefs[identS][1]
+	cons_T = derived_modinfo.consdefs[identT][1]
 
 	@test !isdefined(base_module,:construct_Food)
 	@test Core.eval(base_module, cons_S.transformed_expr)() == (true,)
