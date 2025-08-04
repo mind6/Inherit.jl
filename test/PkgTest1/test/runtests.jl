@@ -48,8 +48,8 @@ end
 	end
 
 	@testset "method dispatch from abstractbase" begin
-		basket = Fruit[Orange(1), Kiwi(2.0), Apple(3,4)]
-		@test [cost(item, 2.0f0) for item in basket] == [2.0f0, 4.0f0, 14.0f0]
+		basket = Fruit[Orange(1), Kiwi(2.0), Apple(4)] # includes constructor inheritance test
+		@test [cost(item, 2.0f0) for item in basket] == [2.0f0, 4.0f0, 10.4f0]
 	end
 
 	@testset "method comments work with compile time only evaluation" begin

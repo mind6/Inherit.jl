@@ -2,7 +2,7 @@
 using Test, MacroTools
 using Inherit
 
-import Inherit: transform_constructor, get_supertype_constructor_name
+import Inherit: transform_constructor
 
 @testset "Super() transformation exploration" begin
 	# First, let's create a test module to explore the data structures

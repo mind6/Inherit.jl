@@ -1,11 +1,15 @@
 using Inherit, Test
 
+const GREEN = "\033[92m"
+const BOLD = "\033[1m"
+const END = "\033[0m"
+
 @testset "test_nothrows basic functionality" begin
 	# Test successful case
 	@test_nothrows 2 + 2  # This should pass
 	
 	# Test failure case - we expect this to fail and want to verify the message
-	ts = Test.DefaultTestSet("expected_failure")
+	ts = Test.DefaultTestSet("$(GREEN)$(BOLD)EXPECTED FAILURE:$(END)")
 	Test.push_testset(ts)
 	
 	f() = error("test message")

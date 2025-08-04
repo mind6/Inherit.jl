@@ -22,6 +22,9 @@ end
 	weight::Float32
 	"a useful function"
 	function cost(fruit::PkgTest1.Fruit, unitprice::Float32)::Float32 end
+	function Fruit()
+		new(1.2)
+	end
 end
 
 "derived types can also be documented"
@@ -29,6 +32,9 @@ end
 @implement struct Kiwi <: Fruit end
 @implement struct Apple <: Fruit 
 	coresize::Int 
+	function Apple(coresize)
+		new(super(), coresize)
+	end
 end
 "has more than"
 function cost(fruit::Union{Orange, Kiwi}, unitprice::Number)
@@ -41,11 +47,5 @@ end
 
 @verify_interfaces
 
-
-# raninit::Bool = false
-# @postinit function __myinit__()	#NOTE: this method gets run during precompilation and its results are baked into PkgTest1
-# 	# @info("$(@__MODULE__) postinit executed")
-# 	global raninit = true
-# end
 
 end # module PkgTest1

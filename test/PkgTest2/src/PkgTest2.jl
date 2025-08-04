@@ -10,10 +10,17 @@ end
 @abstractbase struct SummerFruit <: PkgTest1.Fruit
 	season::String
 	function isripe(fruit::SummerFruit)::Bool end
+	function SummerFruit()
+		new(super(), "summer")
+	end
 end
 
 @implement struct Orange <: Fruit end
-@implement struct Orange1 <: PkgTest1.Fruit end
+@implement struct Orange1 <: PkgTest1.Fruit 
+	function Orange1()
+		new(super())
+	end
+end
 
 "local function with local types"
 function cost(item::Orange, unitprice::Number)
@@ -41,6 +48,9 @@ function test()
 
 		# super type defined in foreign module
 		@test fieldnames(Orange1) == (:weight,)
+
+		# constructor inheritance across 1 package
+		@test PkgTest1.cost(Orange1(), 3.0f0) ≈ 3.6f0
 
 		# even though we modified PkgTest1 at compile time, at runtime we have a new instance
 		@test PkgTest1.clientmodule === nothing
