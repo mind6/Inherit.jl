@@ -282,9 +282,20 @@ function add_type_parameters(current_module, type_name, type_params)
 end
 
 """
- Main abstractbase macro implementation
+Creates a Julia abstract type, while allowing field and method declarations to be inherited by subtypes created with the `@implement` macro.
 
-'super()' is a reserved function in the context of inheritable constructors. It is used to call the constructor of the supertype.
+Requires a single expression of one of following forms:
+
+	struct T ... end
+	mutable struct T ... end
+	struct T <: S ... end
+	mutable struct T <: S ... end
+
+Supertype __S__ can be any valid Julia abstract type. In addition, if __S__ was created with `@abstractbase`, all its fields and method declarations will be prepended to __T__'s own definitions, and they will be inherited by any subtype of __T__. 
+
+__Mutability__ must be the same as the supertype's mutability.
+
+`super()` is a reserved function in the context of inheritable constructors. It is used to call the constructor of the supertype.
 """
 macro abstractbase(ex)
 	# 1. Initialize module database

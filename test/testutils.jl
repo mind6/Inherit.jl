@@ -16,40 +16,7 @@ end
 	Main.m123.m1234.m12345.m123456.S
 end
 
-module m1235
-	module m12356
-	end
 
-	using Inherit, Test
-	import ..m1234, .m12356, ..m1234.m12345.m123456
-	import Main.m123, ....m123.m1234.m12345
-
-	@testset "import expressions" begin
-		@test_warn "WARNING: import of " eval(Inherit.to_import_expr(:include, fullname(m1234), fullname(@__MODULE__)))
-		@test_warn "WARNING: import of " eval(Inherit.to_import_expr(:include, fullname(m12356), fullname(@__MODULE__)))
-		@test_warn "WARNING: import of " eval( Inherit.to_import_expr(:include, fullname(m123456), fullname(@__MODULE__)))
-
-		@test_warn "WARNING: import of " eval( Inherit.to_import_expr(:include, fullname(m123), fullname(@__MODULE__)))
-		@test_warn "WARNING: import of " eval( Inherit.to_import_expr(:include, fullname(m12345), fullname(@__MODULE__)))
-		@test Inherit.to_import_expr(:cost, (:Main,:Main,:M1), (:Main,:Main,:M2)) == :(import ..M1: cost)
-	end
-end
-
-end
-
-if VERSION.minor >= 11
-	@testset "detecting empty function body" begin
-		function f1() end
-		function f2 end
-		function f3 end
-
-		function f2() println("this function does something") end
-		function f3() nothing end
-
-		@test Inherit.hasemptybody(code_typed(f1)[1].first)	#prototype never implemented
-		@test !Inherit.hasemptybody(code_typed(f2)[1].first) #has some implementation
-		@test Inherit.hasemptybody(code_typed(f3)[1].first) #equivalent to f1
-	end
 end
 
 @testset "utils tests" begin

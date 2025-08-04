@@ -8,7 +8,6 @@ Inherit.jl is used to inherit fields and interface definitions from a supertype.
 DocTestSetup = quote
 	import Inherit
 	ENV["JULIA_DEBUG"] = ""
-	ENV[Inherit.E_SUMMARY_LEVEL] = "info"
 end
 ```
 

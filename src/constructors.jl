@@ -282,7 +282,6 @@ Finds all constructor definitions in the given lines and transforms them in plac
 """
 function find_and_transform_constructors!(lines::AbstractVector{<:Any}, T::Symbol, S::Union{Symbol, Expr},current_module::Module)
 	objS = Core.eval(current_module, S)		
-	modinfo = getproperty(current_module, H_COMPILETIMEINFO)
 
 	for (i, line) in enumerate(lines)
 		if isexpr(line, :function)

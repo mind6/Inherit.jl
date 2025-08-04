@@ -150,12 +150,6 @@ end
 		)
 		@test_throws "new() calls are required in abstract constructors" transform_constructor(:Apple, expr; isabstract=true, super_type_constructor=:construct_Fruit)
 	end
-	@testset "Get supertype constructor name" begin
-		
-		# Test this with our test module from above
-		# This test will help us understand what we need to implement
-		@test_skip get_supertype_constructor_name(test_module, :Fruit) == :construct_Food
-	end
 end
 
 @testset "Super() calls must be the first argument" begin
