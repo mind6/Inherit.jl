@@ -178,3 +178,67 @@ end
 	@test a.tax_exempt == true
 end
 end
+
+##############################################################################
+
+module mc2
+using Inherit, Test
+
+@abstractbase struct Food
+	tax_exempt::Bool
+	function cost(x::Food) end
+end
+
+@implement struct Fruit <: Food
+	weight::Float64
+	size::String
+	function Fruit(w)
+		new(false, w * 0.9, "large")
+	end
+end
+
+function cost(x::Fruit) 
+	x.weight * 2.0
+end
+
+@testset "inner constructor with no super" begin
+	f = Fruit(1.0)
+	@test f.tax_exempt == false
+	@test cost(f) == 1.8
+end
+
+end
+##############################################################################
+module mc3
+using Inherit, Test
+
+@abstractbase struct Food
+	tax_exempt::Bool
+	function cost(x::Food) end
+	function Food()
+		new(true)
+	end
+end
+
+@abstractbase struct Fruit <: Food
+end
+
+@implement struct Banana <: Fruit
+	weight::Float64
+	size::String
+	function Banana(w)
+		new(super(), w * 0.9, "large")
+	end
+end
+
+function cost(x::Fruit) 
+	x.weight * 2.0
+end
+
+@testset "skipped on level of super" begin
+	f = Banana(1.0)
+	@test f.tax_exempt == true
+	@test cost(f) == 1.8
+end
+
+end

@@ -240,8 +240,8 @@ function locate_supertype_constructor(current_module::Module, derived_typename::
 	locate_constructor(current_module, supertype(derivedtype))
 end
 
-function locate_constructor(current_module::Module, supertype::DataType)::Union{Nothing, Symbol}
-	consfunc = find_supertype_constructor_function(supertype)
+function locate_constructor(current_module::Module, basetype::DataType)::Union{Nothing, Symbol}
+	consfunc = find_supertype_constructor_function(basetype)
 	if consfunc === nothing
 		return nothing
 	end
@@ -251,9 +251,9 @@ function locate_constructor(current_module::Module, supertype::DataType)::Union{
 	return imported_name
 end
 
-function find_supertype_constructor_function(supertype::DataType)::Union{Nothing, Function}
-	__defmodule__ = parentmodule(supertype)
-	basename = nameof(supertype)
+function find_supertype_constructor_function(basetype::DataType)::Union{Nothing, Function}
+	__defmodule__ = parentmodule(basetype)
+	basename = nameof(basetype)
 
 	# @show __defmodule__
 	if !isdefined(__defmodule__, H_COMPILETIMEINFO) 
@@ -263,13 +263,17 @@ function find_supertype_constructor_function(supertype::DataType)::Union{Nothing
 
 	defmodinfo = getproperty(__defmodule__, H_COMPILETIMEINFO)
 	# @show defmodinfo
-	if !haskey(defmodinfo.consdefs, basename)
+	if !haskey(defmodinfo.consdefs, basename) 
+		@debug "$__defmodule__ is used by Inherit but $basename has no entry in consdefs; not declared as @abstractbase?"
+		return nothing
+	end
+
+	if isempty(defmodinfo.consdefs[basename])
 		# no constructor definitions for this type, look in supertype
 		return find_supertype_constructor_function(supertype(basetype))
 	end
 
-	@assert !isempty(defmodinfo.consdefs[basename]) "expected at least oneconstructor definition because $basename is in the keys of consdefs"
-		# defined and recorded
+	# defined and recorded
 	constructor_name = Symbol("construct_", basename)
 	@assert isdefined(__defmodule__, constructor_name)
 	return getproperty(__defmodule__, constructor_name)
