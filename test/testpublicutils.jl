@@ -1,8 +1,5 @@
 using Inherit, Test
-
-const GREEN = "\033[92m"
-const BOLD = "\033[1m"
-const END = "\033[0m"
+import Inherit: GREEN, BOLD, END
 
 @testset "test_nothrows basic functionality" begin
 	# Test successful case
