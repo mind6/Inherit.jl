@@ -90,11 +90,19 @@ M1.runtime_test()
 	origsig = Inherit.last_method_def(m1func).sig
 
 	Mshadow = Inherit.createshadowmodule(M1)
-	shadowsig = Inherit.make_function_signature(Mshadow, m1functype, line)
+	shadowsig = Inherit.make_function_signature(M1, Mshadow, m1functype, line)
 
 	@test origsig == shadowsig
+	@test isdefined(M1, :TestSetException)
+	@test !isdefined(Mshadow, :TestSetException)
+
+	Inherit.import_symbol_into_shadowmodule(M1, Mshadow, :TestSetException)
+	@test isdefined(Mshadow, :TestSetException)
+
 	Inherit.cleanup_shadowmodule(Mshadow)
 end
+
+
 
 # :(struct Fruit<:B
 # 	weight::Float32
@@ -417,6 +425,26 @@ module M6
 		apple.weight = 2.0
 		@test_throws "const field" apple.seller = "california"
 		@test apple.weight == 2.0
+	end
+end
+
+module M7
+	export MyType, MyType2
+	struct MyType end
+	struct MyType2 end
+end
+module M7client
+	using ..M7
+	using Inherit, Test
+	@abstractbase struct T 
+		function somefunc(a::MyType, b::MyType2) end
+	end
+	@testset "importing using'ed symbols into shadowmodule" begin
+		@test isdefined(M7client, :MyType)
+		@test isdefined(M7client, :MyType2)
+		shadowmod = getproperty(M7client, Inherit.H_SHADOW_SUBMODULE)
+		@test isdefined(shadowmod, :MyType)
+		@test isdefined(shadowmod, :MyType2)
 	end
 end
 

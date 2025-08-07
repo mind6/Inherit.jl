@@ -184,10 +184,47 @@ end
 # 	# Base.delete_method(m)	# `WARNING: method deletion during Module precompile may lead to undefined behavior` This warning shows up even when deleting in module __init__.
 # end
 
-function make_function_signature(shadowmodule::Module, functype::DataType, line::Expr)::Type{<:Tuple}
-	f = Core.eval(shadowmodule, line)
-	m = last_method_def(f)
-	set_sig_functype(m.sig, functype)
+"""
+"""
+function make_function_signature(current_module::Module, shadowmodule::Module, functype::DataType, line::Expr)::Type{<:Tuple}
+	let f, failedsymbol = nothing
+		# try to import each UndefVarError symbol exactly once. If it fails a second time, we throw an error.
+		while true
+			try
+				f = Core.eval(shadowmodule, line)
+				break
+			catch e
+				if e isa UndefVarError
+					@assert e.var isa Symbol
+					if e.var != failedsymbol
+						@debug "importing $(e.var) into shadowmodule"
+						import_symbol_into_shadowmodule(current_module, shadowmodule, e.var)
+					else
+						@error "[Inherit.jl] Importing $(e.var) from $current_module into shadowmodule did not work. Julia does not expose names imported via 'using MyModule'. Try 'import MyModule: $(e.var)'."
+						throw(e)
+					end
+					failedsymbol = e.var
+				else
+					rethrow(e)
+				end
+			end
+		end
+		m = last_method_def(f)
+		set_sig_functype(m.sig, functype)
+	end
+end
+
+function import_symbol_into_shadowmodule(current_module::Module, shadowmodule::Module, symbol::Symbol)
+	if isdefined(current_module, symbol)
+		p = getproperty(current_module, symbol)
+		if isdefined(shadowmodule, symbol)
+			setproperty!(shadowmodule, symbol, p)
+		else
+			Core.eval(shadowmodule, :(global $symbol = $p))
+		end
+	else
+		error("""$symbol is not defined in $current_module""")
+	end
 end
 
 "

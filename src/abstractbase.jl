@@ -203,7 +203,7 @@ function process_method_declaration(current_module::Module, identT::TypeIdentifi
 		functype = typeof(f)
 		
 		shadowmodule = createshadowmodule(current_module)
-		shadowsig = make_function_signature(shadowmodule, functype, line)
+		shadowsig = make_function_signature(current_module, shadowmodule, functype, line)
 
 		# Store method declaration in the database
 		push!(modinfo.method_decls[identT], MethodDeclaration(identT, line, comment, funcname, functype, shadowsig))
