@@ -7,21 +7,22 @@ version = "0.3.0"
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 
 [weakdeps]
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [extensions]
-TestExt = "Test"
 DistributedExt = "Distributed"
+TestExt = "Test"
 
 [compat]
-MacroTools = "0.5, 0.6, 0.7"
-julia = "1.10, 1.11"
+MacroTools = "0.5"
+julia = "1.9, 1.10, 1.11"
 
 [extras]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+REPL = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 
 [targets]
-test = ["Pkg", "Documenter", "Test"]
+test = ["Pkg", "Documenter", "Test", "REPL"]

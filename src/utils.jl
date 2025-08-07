@@ -184,7 +184,17 @@ end
 # 	# Base.delete_method(m)	# `WARNING: method deletion during Module precompile may lead to undefined behavior` This warning shows up even when deleting in module __init__.
 # end
 
+
 """
+Evaluates a function declaration in a shadow module to extract its signature type.
+
+Takes a function declaration expression and evaluates it in the shadow module to determine
+the method signature. Automatically imports any undefined symbols from the current module
+into the shadow module as needed. Returns the signature type with the correct function type
+binding, allowing signature analysis without polluting the original module namespace.
+
+Throws an error if a symbol cannot be imported after one retry attempt, typically indicating
+the symbol was imported via `using` rather than `import` in the original module.
 """
 function make_function_signature(current_module::Module, shadowmodule::Module, functype::DataType, line::Expr)::Type{<:Tuple}
 	let f, failedsymbol = nothing
@@ -214,6 +224,16 @@ function make_function_signature(current_module::Module, shadowmodule::Module, f
 	end
 end
 
+"""
+Imports a symbol from the current module into a shadow module to enable signature evaluation.
+
+When evaluating function signatures in shadow modules, undefined variables may be encountered.
+This function resolves such variables by importing the corresponding symbol from the current
+module into the shadow module. If the symbol already exists in the shadow module, it updates
+the binding; otherwise it creates a new global binding.
+
+Throws an error if `symbol` is not defined in `current_module`.
+"""
 function import_symbol_into_shadowmodule(current_module::Module, shadowmodule::Module, symbol::Symbol)
 	if isdefined(current_module, symbol)
 		p = getproperty(current_module, symbol)
@@ -227,14 +247,29 @@ function import_symbol_into_shadowmodule(current_module::Module, shadowmodule::M
 	end
 end
 
-"
-Returns modulefullname without any prefix it may share with prefixfullname. May return an empty tuple.
-"
+"""
+Removes common prefix symbols from a module fullname path.
+
+Takes two module fullname tuples and returns the portion of `modulefullname` that differs
+from `prefixfullname`. Used to resolve relative module paths when modules share common
+parent paths. Returns an empty tuple if the paths are identical.
+
+# Example
+```julia
+strip_prefix((:Main, :M1, :SubM), (:Main, :M1)) # returns (:SubM,)
+```
+"""
 function strip_prefix(modulefullname::NTuple{N, Symbol}, prefixfullname::NTuple{M, Symbol}) where {N, M}
 	modulefullname[skip_prefix(modulefullname, prefixfullname):end]
 end
 
-"return the index of the first position in modulefullname and prefixfullname does not match"
+"""
+Finds the first index where two module fullname tuples diverge.
+
+Returns the 1-based index of the first position where `modulefullname` and `prefixfullname`
+differ. If one path is a prefix of the other, returns the index immediately after the
+shorter path ends. Used by `strip_prefix` to determine where to slice module paths.
+"""
 function skip_prefix(modulefullname::NTuple{N, Symbol}, prefixfullname::NTuple{M, Symbol}) where {N, M}
 	i = 1
 	while i <= N && i <= M && modulefullname[i] == prefixfullname[i]
@@ -242,9 +277,19 @@ function skip_prefix(modulefullname::NTuple{N, Symbol}, prefixfullname::NTuple{M
 	end
 	i
 end
-"
-removes repetition of module names
-"
+
+"""
+Removes consecutive duplicate symbols from a module fullname path.
+
+Compresses module paths that contain repeated symbol names by keeping only the first
+occurrence of each consecutive duplicate. Used to clean up module paths that may have
+accumulated redundant qualifiers during path resolution.
+
+# Example
+```julia
+strip_self_reference((:Main, :M1, :M1, :SubM)) # returns (:Main, :M1, :SubM)
+```
+"""
 function strip_self_reference(modulefullname::NTuple{N, Symbol}) where N
 	types = Vector{Symbol}()
 	push!(types, modulefullname[1])
