@@ -448,6 +448,15 @@ module M7client
 	end
 end
 
+module M80
+	using Inherit, Test
+	@verify_interfaces
+	@testset "verify_interfaces with no types defined" begin
+		@test true
+	end
+end
+
+
 @testset "parametric argument types must be matched exactly" begin
 	try
 		eval(:(

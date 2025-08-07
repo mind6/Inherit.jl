@@ -99,6 +99,17 @@ This verifies the known interfaces of the current module. It should be placed at
 The macro runs as a compile time verification step. The presence of this macro is optional. If not present, clients of the module should notice no difference.
 """
 macro verify_interfaces()
+	if !isdefined(__module__, H_COMPILETIMEINFO)
+		@debug "No types defined in $(Base.fullname(__module__)); skipping interface verification"
+		return nothing
+	end
+
+	modinfo = getproperty(__module__, H_COMPILETIMEINFO)
+	LOCALMOD = Base.fullname(__module__)
+
+	### create our singleton instance of the shadow module, if not already created by an earlier @abstractbase or @implement macro
+	shadowmodule = Inherit.createshadowmodule(__module__)
+
 	n_supertypes = n_subtypes = n_signatures = n_errors = 0
 
 	function handle_error(errorstr::String)
@@ -110,12 +121,7 @@ macro verify_interfaces()
 			@error errorstr
 		end
 	end
-	modinfo = getproperty(__module__, H_COMPILETIMEINFO)
-	LOCALMOD = Base.fullname(__module__)
-
-	### create our singleton instance of the shadow module, if not already created by an earlier @abstractbase or @implement macro
-	shadowmodule = Inherit.createshadowmodule(__module__)
-
+	
 	### for each supertype of some type defined in this module...
 	for (identS, decls) ∈ modinfo.method_decls
 		n_supertypes += 1
@@ -192,6 +198,8 @@ macro verify_interfaces()
 
 	summarystr = """[$(BLUE)$(BOLD)Inherit.jl$(END)] processed $(join(LOCALMOD, '.')) with $(Inherit.singular_or_plural(n_supertypes, "supertype")) having $(Inherit.singular_or_plural(n_signatures, "method requirement")). $(Inherit.singular_or_plural(n_subtypes, "subtype was", "subtypes were")) checked with $(Inherit.singular_or_plural(n_errors, "missing method"))."""
 	@info summarystr
+
+	return nothing
 end 
 
 
