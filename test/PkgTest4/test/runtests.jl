@@ -4,9 +4,12 @@ cd(joinpath(@__DIR__, ".."))
 
 using Pkg
 Pkg.activate(".")
-
+if VERSION.minor < 11
+	Pkg.develop(path="../..")
+end
+Pkg.resolve()
 begin
-	@time import PackageExtensionsExample
+	# @time import PackageExtensionsExample
 	@time import Inherit
 	@time import PkgTest4
 end

@@ -1,8 +1,10 @@
 name = "PkgTest4"
 uuid = "ed1546e6-2862-409d-8353-5b962759504f"
-authors = ["FURRYSTATION\\kirby <kirbyzhang@live.com>"]
 version = "0.1.0"
+authors = ["FURRYSTATION\\kirby <kirbyzhang@live.com>"]
 
 [deps]
 Inherit = "341b8389-5eed-42ab-a01e-622c6bedf032"
-PackageExtensionsExample = "1150551f-27a8-42dc-b999-d7a8701b0574"
+
+[sources]
+Inherit = {path = "../.."}
