@@ -5,8 +5,8 @@ cd(joinpath(@__DIR__, ".."))
 ENV["JULIA_DEBUG"] = nothing
 using Pkg
 Pkg.activate(".")
-Pkg.develop(path=joinpath("..","PkgTest2"))
-Pkg.develop(path=joinpath("..", "..",))
+Pkg.develop(path="../PkgTest2")
+Pkg.develop(path="../..")
 
 
 using PkgTest3
