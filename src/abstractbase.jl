@@ -74,7 +74,7 @@ Returns the TypeIdentifier for the type.
 """
 function initialize_type_metadata(current_module::Module, type_name::Symbol, ismutable::Bool)
 	module_fullname = fullname(current_module)
-	modinfo = getproperty(current_module, H_COMPILETIMEINFO)
+	modinfo = Base.invokelatest(getproperty, current_module, H_COMPILETIMEINFO)
 
 	# Warn if overwriting
 	if type_name ∈ keys(modinfo.localtypespec)
@@ -119,7 +119,7 @@ function inherit_supertype_metadata(current_module::Module, type_name::Symbol, s
 		# Not an @abstractbase, nothing to inherit
 		return nothing
 	end
-	modinfoT = getproperty(current_module, H_COMPILETIMEINFO)
+	modinfoT = Base.invokelatest(getproperty, current_module, H_COMPILETIMEINFO)
 	
 	# Check mutability compatibility
 	specS = modinfoS.localtypespec[identS.basename]
@@ -183,7 +183,7 @@ function process_method_declaration(current_module::Module, identT::TypeIdentifi
 	# Check if this is a constructor (function name matches type name)
 	is_constructor = funcname == identT.basename
 	
-	modinfo = getproperty(current_module, H_COMPILETIMEINFO)
+	modinfo = Base.invokelatest(getproperty, current_module, H_COMPILETIMEINFO)
 	
 	if is_constructor
 		# Process constructor definition
@@ -199,7 +199,7 @@ function process_method_declaration(current_module::Module, identT::TypeIdentifi
 	elseif body === nothing || isempty(body)
 		# Regular method declaration -  declare the function without methods in the current_module
 		Core.eval(current_module, :(@doc $comment function $(funcname) end)) 	# document the function in the current_module
-		f = getproperty(current_module, funcname)
+		f = Base.invokelatest(getproperty, current_module, funcname)
 		functype = typeof(f)
 		
 		shadowmodule = createshadowmodule(current_module)
@@ -231,7 +231,7 @@ function process_type_body(current_module, type_name, lines)
 	module_fullname = fullname(current_module)
 	identT = TypeIdentifier((module_fullname, type_name))
 	
-	modinfo = getproperty(current_module, H_COMPILETIMEINFO)
+	modinfo = Base.invokelatest(getproperty, current_module, H_COMPILETIMEINFO)
 	
 	# Process each line in the type definition
 	comment = nothing
@@ -275,7 +275,7 @@ function add_type_parameters(current_module, type_name, type_params)
 		return
 	end
 	
-	modinfo = getproperty(current_module, H_COMPILETIMEINFO)
+	modinfo = Base.invokelatest(getproperty, current_module, H_COMPILETIMEINFO)
 	
 	# Add the type parameters to the end of the list (after any inherited params)
 	append!(modinfo.localtypespec[type_name].typeparams, type_params)
