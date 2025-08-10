@@ -1,7 +1,7 @@
 name = "PkgTest1"
 uuid = "75041775-571a-4e75-8a15-6eeecd70cfb9"
-authors = ["mind6 <kirbyzhang@live.com>"]
 version = "0.1.0"
+authors = ["mind6 <kirbyzhang@live.com>"]
 
 [deps]
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
@@ -9,4 +9,4 @@ Inherit = "341b8389-5eed-42ab-a01e-622c6bedf032"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [sources]
-Inherit = {path = "..\\.."}
+Inherit = {path = "../.."}
