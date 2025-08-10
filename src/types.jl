@@ -5,6 +5,13 @@ SymbolOrExpr = Union{Symbol, Expr}
 TypeIdentifier = @NamedTuple{
 	modulefullname::Tuple, 	#module where the supertype was originally defined
 	basename::Symbol}			#name of the supertype
+	
+function Base.print(io::IO, ident::TypeIdentifier) 
+	for mod in ident.modulefullname
+		print(io, mod, '.')
+	end
+	print(io, ident.basename)
+end
 
 TypeSpec = @NamedTuple{
 	ismutable::Bool,			#whether or not the fields of this type are mutable

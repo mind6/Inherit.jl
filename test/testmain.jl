@@ -139,25 +139,18 @@ module M2
 end
 
 @testset "find_supertype_module" begin
-    # Test for cross-module supertype
-    @test Inherit.find_supertype_module(M2.Orange1, Inherit.TypeIdentifier(((:Main, :M1), :Fruit))) === M1
+	# Test for cross-module supertype
+	@test Inherit.find_supertype_module(M2.Orange1, Inherit.TypeIdentifier(((:Main, :M1), :Fruit))) === M1
 
-    # Test for same-module supertype
-    @test Inherit.find_supertype_module(M2.Orange, Inherit.TypeIdentifier(((:Main, :M2), :Fruit))) === M2
-    @test Inherit.find_supertype_module(M1.Orange, Inherit.TypeIdentifier(((:Main, :M1), :Fruit))) === M1
+	# Test for same-module supertype
+	@test Inherit.find_supertype_module(M2.Orange, Inherit.TypeIdentifier(((:Main, :M2), :Fruit))) === M2
+	@test Inherit.find_supertype_module(M1.Orange, Inherit.TypeIdentifier(((:Main, :M1), :Fruit))) === M1
 
-    # Test for type that is not a subtype of the specified supertype
-    @test_throws ErrorException Inherit.find_supertype_module(M2.Orange, Inherit.TypeIdentifier(((:Main, :M1), :Fruit)))
+	# Test for type that is not a subtype of the specified supertype
+	@test_throws ErrorException Inherit.find_supertype_module(M2.Orange, Inherit.TypeIdentifier(((:Main, :M1), :Fruit)))
 
-    # Test error path when supertype is not found
-    err = try
-        Inherit.find_supertype_module(M2.Orange1, Inherit.TypeIdentifier(((:Main, :M3), :Fruit)))
-        nothing
-    catch err
-        err
-    end
-    @test err isa ErrorException
-    @test occursin("M2.Orange1", err.msg)
+	# Test error path when supertype is not found
+	@test_throws "requested identS Main.M3.Fruit is not a supertype of discovered runtime type Main.M1.Fruit" Inherit.find_supertype_module(M2.Orange1, Inherit.TypeIdentifier(((:Main, :M3), :Fruit)))
 end
 
 @testset "additional M1 and M2 tests" begin
