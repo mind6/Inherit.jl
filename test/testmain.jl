@@ -146,6 +146,9 @@ end
     @test Inherit.find_supertype_module(M2.Orange, Inherit.TypeIdentifier(((:Main, :M2), :Fruit))) === M2
     @test Inherit.find_supertype_module(M1.Orange, Inherit.TypeIdentifier(((:Main, :M1), :Fruit))) === M1
 
+    # Test for type that is not a subtype of the specified supertype
+    @test_throws ErrorException Inherit.find_supertype_module(M2.Orange, Inherit.TypeIdentifier(((:Main, :M1), :Fruit)))
+
     # Test error path when supertype is not found
     err = try
         Inherit.find_supertype_module(M2.Orange1, Inherit.TypeIdentifier(((:Main, :M3), :Fruit)))
