@@ -182,11 +182,11 @@ By default, module `__init__()` writes its summary message at the `Info` log lev
 
 # Limitations
 
-Parametric types are currently not supported. Basic support for parametric concrete types is being planned.
+Parametric types are supported; all type parameters must match exactly when inheriting.
 
 Methods are examined only for their positional arguments. Inherit.jl has no special knowledge of keyword arguments, but this may improve in the future.
 
-Inherit.jl has no special knowledge about constructors (inner or otherwise). They're treated like normal functions. As a result, constructor inheritance is not available.
+Constructor inheritance is supported via the `@virtualnew` macro.
 
 Short form function definitions such as `f() = nothing` are not supported for method declaration; use the long form `function f() end` instead. Using short form for method implementation can be problematic as well (e.g. when the function is imported from another module); it's generally safer to use long form.
 
