@@ -473,10 +473,10 @@ function find_supertype_module(currenttype::Type{T}, identS::TypeIdentifier)::Mo
 		@debug "found supertype $ctmod.$ctname"
 		return ctmod
 	else
-		st = supertype(currenttype)
-		if st === Any
-			error("$identS is not a supertype of $basetype")
-		end
-		return find_supertype_module(st, identS)
-	end
+                st = supertype(currenttype)
+                if st === Any
+                        error("$identS is not a supertype of $currenttype")
+                end
+                return find_supertype_module(st, identS)
+        end
 end
