@@ -33,7 +33,7 @@ import Inherit: transform_constructor
 		end)
 		
 		# Now let's explore what data structures were created
-		modinfo = getproperty(test_module, Inherit.H_COMPILETIMEINFO)
+		modinfo = Base.invokelatest(getproperty, test_module, Inherit.H_COMPILETIMEINFO)
 		
 		@test haskey(modinfo.localtypespec, :Food)
 		@test haskey(modinfo.localtypespec, :Fruit)
@@ -193,8 +193,8 @@ module cross_module_calls
 
 	using Inherit, Test, .A, .B
 
-	modinfoA = getproperty(A, Inherit.H_COMPILETIMEINFO)
-	modinfoB = getproperty(B, Inherit.H_COMPILETIMEINFO)
+	modinfoA = Base.invokelatest(getproperty, A, Inherit.H_COMPILETIMEINFO)
+	modinfoB = Base.invokelatest(getproperty, B, Inherit.H_COMPILETIMEINFO)
 
 	cons_S = modinfoA.consdefs[:Food][1]
 	cons_T = modinfoB.consdefs[:Fruit][1]
@@ -204,7 +204,7 @@ module cross_module_calls
 	@testset "cross_module_calls" begin
 		imported_consname = Inherit.locate_supertype_constructor(B, :Fruit)
 		@test isdefined(B, imported_consname)
-		@test getproperty(B, imported_consname)() == (true,)
+		@test Base.invokelatest(getproperty, B, imported_consname)() == (true,)
 
 		@test isdefined(A,:construct_Food)
 		@test A.construct_Food() == (true,)
@@ -272,14 +272,14 @@ end
 	end)
 	
 	# Test that the inheritance worked across modules
-	modinfo = getproperty(derived_module, Inherit.H_COMPILETIMEINFO)
+	modinfo = Base.invokelatest(getproperty, derived_module, Inherit.H_COMPILETIMEINFO)
 	@test haskey(modinfo.localtypespec, :Fruit)
 	
 	fruit_spec = modinfo.localtypespec[:Fruit]
 	@test length(fruit_spec.fields) > 1  # Should have inherited tax_exempt field
 	
-	base_modinfo = getproperty(base_module, Inherit.H_COMPILETIMEINFO)
-	derived_modinfo = getproperty(derived_module, Inherit.H_COMPILETIMEINFO)
+	base_modinfo = Base.invokelatest(getproperty, base_module, Inherit.H_COMPILETIMEINFO)
+	derived_modinfo = Base.invokelatest(getproperty, derived_module, Inherit.H_COMPILETIMEINFO)
 
 	cons_S = base_modinfo.consdefs[:Food][1]
 	cons_T = derived_modinfo.consdefs[:Fruit][1]

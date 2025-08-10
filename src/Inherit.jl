@@ -78,7 +78,7 @@ function process_supertype(currentmod::Module, S::Union{Symbol, Expr})::Tuple{Un
 		@debug "Subtyping from $moduleS.$nameS, but $moduleS is has no compile time info."
 		return nothing, nothing
 	end	
-	modinfo = getproperty(moduleS, H_COMPILETIMEINFO)	#this modinfo of the supertype's module; it can be the currentmod or a foreign module
+	modinfo = Base.invokelatest(getproperty, moduleS, H_COMPILETIMEINFO)	#this modinfo of the supertype's module; it can be the currentmod or a foreign module
 	# @show fullname(moduleS), fullname(currentmod)
 
 	if !haskey(modinfo.localtypespec, nameS)
@@ -104,7 +104,7 @@ macro verify_interfaces()
 		return nothing
 	end
 
-	modinfo = getproperty(__module__, H_COMPILETIMEINFO)
+	modinfo = Base.invokelatest(getproperty, __module__, H_COMPILETIMEINFO)
 	LOCALMOD = Base.fullname(__module__)
 
 	### create our singleton instance of the shadow module, if not already created by an earlier @abstractbase or @implement macro
@@ -142,12 +142,12 @@ macro verify_interfaces()
 			@assert decl.sig !== nothing
 
 			__defmodule__ = Inherit.find_supertype_module(
-				getproperty(__module__, SUBTYPES[1]), decl.defident)
+				Base.invokelatest(getproperty, __module__, SUBTYPES[1]), decl.defident)
 	
 			funcname = decl.funcname
 
 			### get the method table of the declared function
-			func = Base.getproperty(__defmodule__, funcname)
+			func = Base.invokelatest(getproperty, __defmodule__, funcname)
 			mt = Base.methods(func)
 			if mt === nothing || Base.isempty(mt)
 				errorstr = "No methods defined for `$(Base.nameof(__defmodule__)).$funcname`. A method must exist which satisfies:\n$(decl.line)"
@@ -247,7 +247,7 @@ macro implement(ex)
 		return :(throw(ImplementError($errorstr)))
 	end
 	# recording as subtype in the local module's dict. this activates any method requirements for the supertype
-	modinfoT = getproperty(__module__, H_COMPILETIMEINFO)
+	modinfoT = Base.invokelatest(getproperty, __module__, H_COMPILETIMEINFO)
 	localsubtypes = modinfoT.subtypes
 
 	### add T as a subtype of S, and import any method declarations from the supertype's module

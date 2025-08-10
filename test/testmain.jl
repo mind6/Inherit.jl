@@ -448,7 +448,7 @@ module M7client
 	@testset "importing using'ed symbols into shadowmodule" begin
 		@test isdefined(M7client, :MyType)
 		@test isdefined(M7client, :MyType2)
-		shadowmod = getproperty(M7client, Inherit.H_SHADOW_SUBMODULE)
+                shadowmod = Base.invokelatest(getproperty, M7client, Inherit.H_SHADOW_SUBMODULE)
 		@test isdefined(shadowmod, :MyType)
 		@test isdefined(shadowmod, :MyType2)
 	end
