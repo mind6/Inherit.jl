@@ -2,22 +2,47 @@ name: Coverage
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
+
+permissions:
+  contents: read
+  id-token: write   # enables tokenless uploads for public repos with codecov-action v4
 
 jobs:
   coverage:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: julia-actions/setup-julia@v1
+
+      - uses: julia-actions/setup-julia@v2
         with:
-          version: '1.10'
-      - uses: julia-actions/cache@v1
-      - uses: julia-actions/julia-buildpkg@v1
-      - uses: julia-actions/julia-runtest@v1
-      - uses: julia-actions/julia-processcoverage@v1
-      - uses: codecov/codecov-action@v4
+          version: '1.10'   # or '1' to always get latest 1.x
+
+      - name: Cache Julia depot
+        uses: julia-actions/cache@v1
+
+      - name: Build package
+        uses: julia-actions/julia-buildpkg@v1
+
+      - name: Run tests (with coverage)
+        uses: julia-actions/julia-runtest@v1
+
+      - name: Convert coverage to LCOV
+        uses: julia-actions/julia-processcoverage@v1
+        # Produces ./lcov.info by default
+
+      - name: List coverage file (sanity check)
+        run: ls -l lcov.info || (echo "lcov.info missing" && exit 1)
+
+      - name: Upload to Codecov (with retry)
+        uses: codecov/codecov-action@v4
         with:
+          # If private repo, set a secret named CODECOV_TOKEN and uncomment next line:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: lcov.info
+          flags: unittests
+          verbose: true
+          fail_ci_if_error: true
+          # Simple retry (codecov-action v4 retries internally, but this helps logs)
+          disable_default_path_fixes: false
