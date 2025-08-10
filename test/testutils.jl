@@ -153,22 +153,26 @@ and properly handles edge cases like empty input
     expr1 = Inherit.build_import_expr(:PkgTest1)
     @test expr1.head == :import
     @test length(expr1.args) == 1
-    @test expr1.args[1] == :PkgTest1
+    @test expr1.args[1] isa Expr
+    @test expr1.args[1].head == :.
+    @test expr1.args[1].args[1] == :PkgTest1
     
     # Test multiple package import
     expr2 = Inherit.build_import_expr(:PkgTest1, :PkgTest2, :DataFrames)
     @test expr2.head == :import
     @test length(expr2.args) == 3
-    @test expr2.args[1] == :PkgTest1
-    @test expr2.args[2] == :PkgTest2
-    @test expr2.args[3] == :DataFrames
+    @test all(arg isa Expr && arg.head == :. for arg in expr2.args)
+    @test expr2.args[1].args[1] == :PkgTest1
+    @test expr2.args[2].args[1] == :PkgTest2
+    @test expr2.args[3].args[1] == :DataFrames
     
     # Test two package import
     expr3 = Inherit.build_import_expr(:Foo, :Bar)
     @test expr3.head == :import
     @test length(expr3.args) == 2
-    @test expr3.args[1] == :Foo
-    @test expr3.args[2] == :Bar
+    @test all(arg isa Expr && arg.head == :. for arg in expr3.args)
+    @test expr3.args[1].args[1] == :Foo
+    @test expr3.args[2].args[1] == :Bar
     
     # Test error on empty input
     @test_throws ArgumentError Inherit.build_import_expr()
@@ -176,7 +180,7 @@ and properly handles edge cases like empty input
     # Test that expressions can be evaluated (syntactically valid)
     for expr in [expr1, expr2, expr3]
         @test Meta.isexpr(expr, :import)
-        @test all(arg isa Symbol for arg in expr.args)
+        @test all(Meta.isexpr(arg, :.) for arg in expr.args)
     end
     
     # Test equivalence to literal import expressions
