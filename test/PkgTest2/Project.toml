@@ -9,5 +9,5 @@ PkgTest1 = "75041775-571a-4e75-8a15-6eeecd70cfb9"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [sources]
-Inherit = {path = "..\\.."}
-PkgTest1 = {path = "..\\PkgTest1"}
+Inherit = {path = "../.."}
+PkgTest1 = {path = "../PkgTest1"}

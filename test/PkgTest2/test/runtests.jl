@@ -5,8 +5,11 @@ cd(joinpath(@__DIR__, ".."))
 ENV["JULIA_DEBUG"] = nothing
 using Pkg
 Pkg.activate(".")
-Pkg.develop(path=joinpath("..","PkgTest1"))
-Pkg.develop(path=joinpath("..", "..",))
+if VERSION.minor < 11
+	Pkg.develop(path="../PkgTest1")
+	Pkg.develop(path="../..")
+end
+Pkg.resolve()
 
 using PkgTest2
 @assert PkgTest2.Inherit === PkgTest2.PkgTest1.Inherit
