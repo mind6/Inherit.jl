@@ -5,7 +5,7 @@ cd(joinpath(@__DIR__, ".."))
 ENV["JULIA_DEBUG"] = nothing
 using Pkg
 Pkg.activate(".")
-
+Pkg.resolve()
 if VERSION.minor < 11
 	Pkg.develop(path="../PkgTest1")
 	Pkg.develop(path="../..")
