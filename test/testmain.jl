@@ -148,6 +148,16 @@ end
 
     # Test for type that is not a subtype of the specified supertype
     @test_throws ErrorException Inherit.find_supertype_module(M2.Orange, Inherit.TypeIdentifier(((:Main, :M1), :Fruit)))
+
+    # Test error path when supertype is not found
+    err = try
+        Inherit.find_supertype_module(M2.Orange1, Inherit.TypeIdentifier(((:Main, :M3), :Fruit)))
+        nothing
+    catch err
+        err
+    end
+    @test err isa ErrorException
+    @test occursin("M2.Orange1", err.msg)
 end
 
 @testset "additional M1 and M2 tests" begin

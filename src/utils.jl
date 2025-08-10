@@ -457,12 +457,10 @@ expr = build_import_expr(:PkgTest1, :PkgTest2, :DataFrames)
 ```
 """
 function build_import_expr(pkgnames::Symbol...)::Expr
-    if length(pkgnames) == 0
+    if isempty(pkgnames)
         throw(ArgumentError("At least one package name must be provided"))
     end
-    # Each package name needs to be wrapped in Expr(:., symbol) for proper import syntax
-    import_args = [Expr(:., pkg) for pkg in pkgnames]
-    Expr(:import, import_args...)
+    Expr(:import, pkgnames...)
 end
 
 function find_supertype_module(currenttype::Type{T}, identS::TypeIdentifier)::Module where T
@@ -473,10 +471,10 @@ function find_supertype_module(currenttype::Type{T}, identS::TypeIdentifier)::Mo
 		@debug "found supertype $ctmod.$ctname"
 		return ctmod
 	else
-		st = supertype(currenttype)
-		if st === Any
-			error("$identS is not a supertype of $basetype")
-		end
-		return find_supertype_module(st, identS)
-	end
+                st = supertype(currenttype)
+                if st === Any
+                        error("$identS is not a supertype of $currenttype")
+                end
+                return find_supertype_module(st, identS)
+        end
 end
